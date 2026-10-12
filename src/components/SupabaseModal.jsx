@@ -5,6 +5,7 @@ import {
   clearSupabaseCredentials, 
   isSupabaseConfigured 
 } from '../lib/supabase';
+import { createClient } from '@supabase/supabase-js';
 import { 
   Database, 
   X, 
@@ -14,7 +15,9 @@ import {
   Save, 
   RotateCcw,
   ShieldCheck,
-  Server
+  Server,
+  AlertCircle,
+  Loader2
 } from 'lucide-react';
 
 export function SupabaseModal({ isOpen, onClose }) {
@@ -22,8 +25,56 @@ export function SupabaseModal({ isOpen, onClose }) {
   const [url, setUrl] = useState(() => localStorage.getItem('designflow_supabase_url') || import.meta.env.VITE_SUPABASE_URL || '');
   const [key, setKey] = useState(() => localStorage.getItem('designflow_supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '');
   const [copied, setCopied] = useState(false);
+  const [isTesting, setIsTesting] = useState(false);
+  const [testStatus, setTestStatus] = useState(null); // { type: 'success' | 'warning' | 'error', message: string }
 
   if (!isOpen) return null;
+
+  const handleTestConnection = async () => {
+    if (!url.trim() || !key.trim()) {
+      setTestStatus({ type: 'error', message: 'Preencha a URL e a Anon Key antes de testar.' });
+      return;
+    }
+
+    setIsTesting(true);
+    setTestStatus(null);
+
+    try {
+      const client = createClient(url.trim(), key.trim());
+      const { data, error } = await client.from('designers').select('id, goal_criacao_artes').limit(1);
+
+      if (error) {
+        if (error.code === '42P01' || error.message?.includes('does not exist')) {
+          setTestStatus({
+            type: 'warning',
+            message: 'Atenção: A conexão com o Supabase funcionou, mas a tabela "designers" AINDA NÃO EXISTE! No Supabase as tabelas não são criadas pela tela. Você precisa copiar o script SQL abaixo e executá-lo no SQL Editor do painel do Supabase.'
+          });
+        } else if (error.message?.includes('column') && error.message?.includes('does not exist')) {
+          setTestStatus({
+            type: 'warning',
+            message: 'Atenção: A tabela existe, mas faltam as colunas de metas personalizadas. Execute o script SQL atualizado abaixo no SQL Editor do Supabase.'
+          });
+        } else {
+          setTestStatus({
+            type: 'error',
+            message: `Erro do Supabase: ${error.message} (Código: ${error.code || 'N/A'})`
+          });
+        }
+      } else {
+        setTestStatus({
+          type: 'success',
+          message: 'Tudo pronto! Conexão autenticada e a tabela "designers" foi encontrada com sucesso no seu Supabase.'
+        });
+      }
+    } catch (err) {
+      setTestStatus({
+        type: 'error',
+        message: `Falha ao tentar conectar: ${err.message}`
+      });
+    } finally {
+      setIsTesting(false);
+    }
+  };
 
   const handleSave = (e) => {
     e.preventDefault();
@@ -41,13 +92,21 @@ export function SupabaseModal({ isOpen, onClose }) {
   };
 
   const handleCopySQL = () => {
-    const sql = `-- Execute este script no SQL Editor do seu projeto Supabase:
+    const sql = `-- ==========================================================
+-- DESIGNFLOW UNIFORMES - SCRIPT SQL COMPLETO PARA SUPABASE
+-- Execute este script no SQL Editor do seu projeto Supabase
+-- ==========================================================
+
+-- 1. Tabela de Designers da Equipe
 CREATE TABLE IF NOT EXISTS designers (
   id TEXT PRIMARY KEY,
   name TEXT NOT NULL,
   nickname TEXT,
   role TEXT DEFAULT 'Designer Criação',
   avatar_color TEXT DEFAULT '#3b82f6',
+  goal_criacao_artes INTEGER DEFAULT 8,
+  goal_exportacao INTEGER DEFAULT 10,
+  goal_impressao_pecas INTEGER DEFAULT 120,
   daily_goal_orders INTEGER DEFAULT 8,
   daily_goal_meters NUMERIC DEFAULT 0,
   daily_goal_pieces INTEGER DEFAULT 50,
@@ -55,6 +114,12 @@ CREATE TABLE IF NOT EXISTS designers (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Garante as colunas novas caso a tabela já tenha sido criada:
+ALTER TABLE designers ADD COLUMN IF NOT EXISTS goal_criacao_artes INTEGER DEFAULT 8;
+ALTER TABLE designers ADD COLUMN IF NOT EXISTS goal_exportacao INTEGER DEFAULT 10;
+ALTER TABLE designers ADD COLUMN IF NOT EXISTS goal_impressao_pecas INTEGER DEFAULT 120;
+
+-- 2. Tabela de Lançamentos de Produção
 CREATE TABLE IF NOT EXISTS production_entries (
   id TEXT PRIMARY KEY,
   order_number TEXT NOT NULL,
@@ -71,18 +136,38 @@ CREATE TABLE IF NOT EXISTS production_entries (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- 3. Índices de Otimização
+CREATE INDEX IF NOT EXISTS idx_entries_date ON production_entries(date);
+CREATE INDEX IF NOT EXISTS idx_entries_designer ON production_entries(designer_id);
+CREATE INDEX IF NOT EXISTS idx_entries_stage ON production_entries(stage);
+
+-- 4. Habilitar RLS e Permissões Públicas
 ALTER TABLE designers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE production_entries ENABLE ROW LEVEL SECURITY;
 
-CREATE POLICY "Permitir leitura de designers" ON designers FOR SELECT USING (true);
-CREATE POLICY "Permitir inserção de designers" ON designers FOR INSERT WITH CHECK (true);
-CREATE POLICY "Permitir atualização de designers" ON designers FOR UPDATE USING (true);
-CREATE POLICY "Permitir exclusão de designers" ON designers FOR DELETE USING (true);
+DROP POLICY IF EXISTS "Permitir leitura pública de designers" ON designers;
+CREATE POLICY "Permitir leitura pública de designers" ON designers FOR SELECT USING (true);
 
-CREATE POLICY "Permitir leitura de pedidos" ON production_entries FOR SELECT USING (true);
-CREATE POLICY "Permitir inserção de pedidos" ON production_entries FOR INSERT WITH CHECK (true);
-CREATE POLICY "Permitir atualização de pedidos" ON production_entries FOR UPDATE USING (true);
-CREATE POLICY "Permitir exclusão de pedidos" ON production_entries FOR DELETE USING (true);
+DROP POLICY IF EXISTS "Permitir inserção pública de designers" ON designers;
+CREATE POLICY "Permitir inserção pública de designers" ON designers FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir atualização pública de designers" ON designers;
+CREATE POLICY "Permitir atualização pública de designers" ON designers FOR UPDATE USING (true);
+
+DROP POLICY IF EXISTS "Permitir exclusão pública de designers" ON designers;
+CREATE POLICY "Permitir exclusão pública de designers" ON designers FOR DELETE USING (true);
+
+DROP POLICY IF EXISTS "Permitir leitura pública de pedidos" ON production_entries;
+CREATE POLICY "Permitir leitura pública de pedidos" ON production_entries FOR SELECT USING (true);
+
+DROP POLICY IF EXISTS "Permitir inserção pública de pedidos" ON production_entries;
+CREATE POLICY "Permitir inserção pública de pedidos" ON production_entries FOR INSERT WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Permitir atualização pública de pedidos" ON production_entries;
+CREATE POLICY "Permitir atualização pública de pedidos" ON production_entries FOR UPDATE USING (true);
+
+DROP POLICY IF EXISTS "Permitir exclusão pública de pedidos" ON production_entries;
+CREATE POLICY "Permitir exclusão pública de pedidos" ON production_entries FOR DELETE USING (true);
 `;
     navigator.clipboard.writeText(sql);
     setCopied(true);
@@ -174,6 +259,47 @@ CREATE POLICY "Permitir exclusão de pedidos" ON production_entries FOR DELETE U
               />
             </div>
 
+            {/* Teste de Conexão e Verificação das Tabelas */}
+            <div style={{ marginTop: '12px' }}>
+              <button
+                type="button"
+                className="btn btn-secondary btn-sm"
+                onClick={handleTestConnection}
+                disabled={isTesting}
+                style={{ width: '100%', justifyContent: 'center' }}
+              >
+                {isTesting ? <Loader2 size={13} className="spin" /> : <ShieldCheck size={13} />}
+                {isTesting ? 'Verificando Tabelas no Supabase...' : '🔍 Testar Conexão e Verificar Tabelas'}
+              </button>
+            </div>
+
+            {testStatus && (
+              <div 
+                style={{
+                  marginTop: '12px',
+                  padding: '10px 12px',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.75rem',
+                  lineHeight: '1.4',
+                  background: testStatus.type === 'success' 
+                    ? 'rgba(16, 185, 129, 0.1)' 
+                    : testStatus.type === 'warning' 
+                    ? 'rgba(245, 158, 11, 0.1)' 
+                    : 'rgba(239, 68, 68, 0.1)',
+                  border: `1px solid ${
+                    testStatus.type === 'success' 
+                      ? 'var(--accent-emerald)' 
+                      : testStatus.type === 'warning' 
+                      ? 'var(--accent-amber)' 
+                      : '#ef4444'
+                  }`,
+                  color: 'var(--text-primary)'
+                }}
+              >
+                {testStatus.message}
+              </div>
+            )}
+
             {/* Script SQL para copiar */}
             <div 
               style={{
@@ -188,10 +314,10 @@ CREATE POLICY "Permitir exclusão de pedidos" ON production_entries FOR DELETE U
             >
               <div>
                 <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                  Script das Tabelas SQL
+                  Script das Tabelas SQL (Obrigatório)
                 </div>
                 <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                  Cole no SQL Editor do Supabase para criar as tabelas
+                  Execute no SQL Editor do Supabase para criar as tabelas
                 </div>
               </div>
               <button

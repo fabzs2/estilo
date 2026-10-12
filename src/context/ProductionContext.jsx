@@ -160,7 +160,15 @@ export function ProductionProvider({ children }) {
 
     if (isSupabaseActive && supabase) {
       try {
-        await supabase.from('production_entries').insert(mapEntryToDB(item));
+        const { error } = await supabase.from('production_entries').insert(mapEntryToDB(item));
+        if (error) {
+          console.error('Erro ao salvar pedido no Supabase:', error);
+          if (error.code === '42P01' || error.message?.includes('does not exist')) {
+            alert('Aviso do Supabase:\n\nA tabela "production_entries" ainda não existe no seu banco de dados Supabase!\n\nExecute o script do arquivo supabase_schema.sql no SQL Editor do Supabase para criar as tabelas.');
+          } else {
+            console.warn('Supabase erro:', error.message);
+          }
+        }
       } catch (err) {
         console.error('Erro ao salvar no Supabase:', err);
       }
@@ -191,7 +199,8 @@ export function ProductionProvider({ children }) {
 
     if (isSupabaseActive && supabase && updatedItem) {
       try {
-        await supabase.from('production_entries').update(mapEntryToDB(updatedItem)).eq('id', id);
+        const { error } = await supabase.from('production_entries').update(mapEntryToDB(updatedItem)).eq('id', id);
+        if (error) console.error('Erro ao atualizar no Supabase:', error);
       } catch (err) {
         console.error('Erro ao atualizar no Supabase:', err);
       }
@@ -203,7 +212,8 @@ export function ProductionProvider({ children }) {
 
     if (isSupabaseActive && supabase) {
       try {
-        await supabase.from('production_entries').delete().eq('id', id);
+        const { error } = await supabase.from('production_entries').delete().eq('id', id);
+        if (error) console.error('Erro ao deletar do Supabase:', error);
       } catch (err) {
         console.error('Erro ao deletar do Supabase:', err);
       }
@@ -227,7 +237,8 @@ export function ProductionProvider({ children }) {
 
     if (isSupabaseActive && supabase) {
       try {
-        await supabase.from('production_entries').insert(formatted.map(mapEntryToDB));
+        const { error } = await supabase.from('production_entries').insert(formatted.map(mapEntryToDB));
+        if (error) console.error('Erro ao salvar lote no Supabase:', error);
       } catch (err) {
         console.error('Erro ao salvar lote no Supabase:', err);
       }
@@ -252,7 +263,15 @@ export function ProductionProvider({ children }) {
 
     if (isSupabaseActive && supabase) {
       try {
-        await supabase.from('designers').insert(mapDesignerToDB(designer));
+        const { error } = await supabase.from('designers').insert(mapDesignerToDB(designer));
+        if (error) {
+          console.error('Erro ao salvar designer no Supabase:', error);
+          if (error.code === '42P01' || error.message?.includes('does not exist')) {
+            alert('Aviso do Supabase:\n\nA tabela "designers" ainda NÃO EXISTE no seu projeto do Supabase!\n\nNo Supabase, as tabelas não são criadas automaticamente pela tela. Você precisa abrir o painel do Supabase, ir no menu "SQL Editor" e rodar o script SQL para criar as tabelas.');
+          } else {
+            alert(`Aviso ao salvar designer no Supabase: ${error.message}`);
+          }
+        }
       } catch (err) {
         console.error('Erro ao salvar designer no Supabase:', err);
       }

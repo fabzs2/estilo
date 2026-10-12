@@ -38,6 +38,11 @@ CREATE TABLE IF NOT EXISTS production_entries (
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
 
+-- Caso as tabelas já tenham sido criadas anteriormente, garante as colunas novas:
+ALTER TABLE designers ADD COLUMN IF NOT EXISTS goal_criacao_artes INTEGER DEFAULT 8;
+ALTER TABLE designers ADD COLUMN IF NOT EXISTS goal_exportacao INTEGER DEFAULT 10;
+ALTER TABLE designers ADD COLUMN IF NOT EXISTS goal_impressao_pecas INTEGER DEFAULT 120;
+
 -- 3. Índices para Alto Desempenho em Consultas e Filtros
 CREATE INDEX IF NOT EXISTS idx_entries_date ON production_entries(date);
 CREATE INDEX IF NOT EXISTS idx_entries_designer ON production_entries(designer_id);
@@ -48,27 +53,27 @@ ALTER TABLE designers ENABLE ROW LEVEL SECURITY;
 ALTER TABLE production_entries ENABLE ROW LEVEL SECURITY;
 
 -- Políticas para tabela designers (Leitura, Inserção, Atualização e Exclusão)
-CREATE POLICY "Permitir leitura pública de designers" 
-  ON designers FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Permitir leitura pública de designers" ON designers;
+CREATE POLICY "Permitir leitura pública de designers" ON designers FOR SELECT USING (true);
 
-CREATE POLICY "Permitir inserção pública de designers" 
-  ON designers FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Permitir inserção pública de designers" ON designers;
+CREATE POLICY "Permitir inserção pública de designers" ON designers FOR INSERT WITH CHECK (true);
 
-CREATE POLICY "Permitir atualização pública de designers" 
-  ON designers FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Permitir atualização pública de designers" ON designers;
+CREATE POLICY "Permitir atualização pública de designers" ON designers FOR UPDATE USING (true);
 
-CREATE POLICY "Permitir exclusão pública de designers" 
-  ON designers FOR DELETE USING (true);
+DROP POLICY IF EXISTS "Permitir exclusão pública de designers" ON designers;
+CREATE POLICY "Permitir exclusão pública de designers" ON designers FOR DELETE USING (true);
 
 -- Políticas para tabela production_entries (Leitura, Inserção, Atualização e Exclusão)
-CREATE POLICY "Permitir leitura pública de pedidos" 
-  ON production_entries FOR SELECT USING (true);
+DROP POLICY IF EXISTS "Permitir leitura pública de pedidos" ON production_entries;
+CREATE POLICY "Permitir leitura pública de pedidos" ON production_entries FOR SELECT USING (true);
 
-CREATE POLICY "Permitir inserção pública de pedidos" 
-  ON production_entries FOR INSERT WITH CHECK (true);
+DROP POLICY IF EXISTS "Permitir inserção pública de pedidos" ON production_entries;
+CREATE POLICY "Permitir inserção pública de pedidos" ON production_entries FOR INSERT WITH CHECK (true);
 
-CREATE POLICY "Permitir atualização pública de pedidos" 
-  ON production_entries FOR UPDATE USING (true);
+DROP POLICY IF EXISTS "Permitir atualização pública de pedidos" ON production_entries;
+CREATE POLICY "Permitir atualização pública de pedidos" ON production_entries FOR UPDATE USING (true);
 
-CREATE POLICY "Permitir exclusão pública de pedidos" 
-  ON production_entries FOR DELETE USING (true);
+DROP POLICY IF EXISTS "Permitir exclusão pública de pedidos" ON production_entries;
+CREATE POLICY "Permitir exclusão pública de pedidos" ON production_entries FOR DELETE USING (true);
