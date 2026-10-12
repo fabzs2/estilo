@@ -5,10 +5,7 @@ import {
   Printer, 
   X, 
   Copy, 
-  Check, 
-  Calendar, 
-  PenTool,
-  Layers
+  Check
 } from 'lucide-react';
 
 export function ExecutiveReportModal() {
@@ -31,23 +28,27 @@ export function ExecutiveReportModal() {
     let text = `*RELATÓRIO DE PRODUÇÃO - SETOR DE DESIGN (${dateBounds.label.toUpperCase()})*\n`;
     text += `📅 Data de Emissão: ${todayBR}\n`;
     text += `📊 Base de Cálculo: ${metrics.workingDaysCount} dia(s) úteis trabalhados\n\n`;
-    text += `*RESUMO GERAL DO SETOR:*\n`;
+    text += `*RESUMO GERAL POR CATEGORIA:*\n`;
     text += `• Total de Pedidos Concluídos: ${metrics.totalOrders}\n`;
-    text += `• Média Diária por Designer: ${metrics.teamDailyAvgOrders.toFixed(1)} pedidos/dia\n`;
-    text += `• Volume Total de Peças: ${metrics.totalPieces.toLocaleString('pt-BR')} peças\n`;
-    text += `• Metragem Impressa (Plotter): ${metrics.totalMeters} metros lineares\n\n`;
-    text += `*DISTRIBUIÇÃO POR ETAPA:*\n`;
-    text += `• Criação de Arte: ${metrics.stageCounts.criacao} pedidos\n`;
-    text += `• Exportação / Fechamento: ${metrics.stageCounts.exportacao} pedidos\n`;
-    text += `• Impressão / Plotter: ${metrics.stageCounts.impressao} pedidos\n\n`;
-    text += `*DESEMPENHO INDIVIDUAL:*\n`;
+    text += `• Criação: ${metrics.stageCounts.criacao} artes (Média: ${metrics.teamDailyAvgCriacao} artes/dia | Meta: ${metrics.teamDailyGoalCriacao}/dia)\n`;
+    text += `• Exportação: ${metrics.stageCounts.exportacao} fechamentos (Média: ${metrics.teamDailyAvgExportacao} exp/dia | Meta: ${metrics.teamDailyGoalExportacao}/dia)\n`;
+    text += `• Impressão: ${metrics.impressaoTotalPieces.toLocaleString('pt-BR')} peças impressas (Média: ${metrics.teamDailyAvgImpressaoPieces} peças/dia | Meta: ${metrics.teamDailyGoalImpressaoPieces}/dia)\n`;
+    text += `• Metragem Rodada (Plotter): ${metrics.totalMeters}m lineares\n\n`;
+    text += `*DESEMPENHO INDIVIDUAL POR DESIGNER:*\n`;
 
     metrics.rankedDesigners.forEach((d, idx) => {
       text += `${idx + 1}. *${d.name}* (${d.role})\n`;
       text += `   - Entregas no período: ${d.ordersCount} pedidos\n`;
-      text += `   - Média Diária: *${d.dailyAvgOrders} ped/dia* (Meta: ${d.dailyGoalOrders}/dia)\n`;
-      text += `   - Peças: ${d.piecesCount} | Metros: ${d.metersCount}m\n`;
-      text += `   - Status: ${d.performanceStatus} (${d.goalAchievementRate}% da meta)\n\n`;
+      if (d.goalCriacaoArtes > 0) {
+        text += `   - 🎨 Criação: ${d.dailyAvgCriacao} artes/dia (Meta: ${d.goalCriacaoArtes}/dia - ${d.rateCriacao}%)\n`;
+      }
+      if (d.goalExportacao > 0) {
+        text += `   - 📐 Exportação: ${d.dailyAvgExportacao} exp/dia (Meta: ${d.goalExportacao}/dia - ${d.rateExportacao}%)\n`;
+      }
+      if (d.goalImpressaoPecas > 0) {
+        text += `   - 🖨️ Impressão: ${d.dailyAvgImpressaoPieces} peças/dia (Meta: ${d.goalImpressaoPecas}/dia - ${d.rateImpressao}%)\n`;
+      }
+      text += `   - Status Geral: ${d.performanceStatus} (${d.goalAchievementRate}% atingido)\n\n`;
     });
 
     return text;
@@ -65,13 +66,13 @@ export function ExecutiveReportModal() {
       <div 
         className="modal-content modal-lg" 
         onClick={(e) => e.stopPropagation()}
-        style={{ maxWidth: '820px' }}
+        style={{ maxWidth: '840px' }}
       >
         {/* Header do Modal com Ações */}
         <div className="modal-header no-print">
           <div className="modal-title">
             <Printer size={17} />
-            Relatório de Produtividade & Médias
+            Relatório de Produtividade & Médias por Categoria
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
             <button
@@ -118,7 +119,7 @@ export function ExecutiveReportModal() {
                 RELATÓRIO DE DESEMPENHO & MÉDIAS - SETOR DE DESIGN
               </h2>
               <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                Fábrica de Uniformes • Criação, Exportação & Impressão
+                Fábrica de Uniformes • Metas por Categoria: Criação (Artes), Exportação (Fechamentos) e Impressão (Peças)
               </div>
             </div>
             <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
@@ -147,47 +148,47 @@ export function ExecutiveReportModal() {
               <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>{metrics.workingDaysCount} dia(s) úteis</div>
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Média Diária / Designer</div>
-              <div style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)' }}>{metrics.teamDailyAvgOrders.toFixed(1)}</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>pedidos / dia</div>
+              <div style={{ fontSize: '0.7rem', color: '#60a5fa', textTransform: 'uppercase', fontWeight: 600 }}>Criação (Artes)</div>
+              <div style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)' }}>{metrics.teamDailyAvgCriacao}</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>artes/dia (Meta: {metrics.teamDailyGoalCriacao})</div>
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Volume de Peças</div>
-              <div style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)' }}>{metrics.totalPieces.toLocaleString('pt-BR')}</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>uniformes</div>
+              <div style={{ fontSize: '0.7rem', color: '#a78bfa', textTransform: 'uppercase', fontWeight: 600 }}>Exportação (Exp.)</div>
+              <div style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)' }}>{metrics.teamDailyAvgExportacao}</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>exp/dia (Meta: {metrics.teamDailyGoalExportacao})</div>
             </div>
             <div>
-              <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', fontWeight: 600 }}>Metragem Impressa</div>
-              <div style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)' }}>{metrics.totalMeters}m</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>papel & sublimação</div>
+              <div style={{ fontSize: '0.7rem', color: '#34d399', textTransform: 'uppercase', fontWeight: 600 }}>Impressão (Peças)</div>
+              <div style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)' }}>{metrics.teamDailyAvgImpressaoPieces}</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>peças/dia (Meta: {metrics.teamDailyGoalImpressaoPieces})</div>
             </div>
           </div>
 
           {/* Divisão por Etapa */}
           <div style={{ marginBottom: '20px' }}>
             <h4 style={{ fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)', marginBottom: '8px' }}>
-              Divisão Operacional por Etapa:
+              Divisão Operacional por Categoria:
             </h4>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '10px' }}>
               <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', padding: '10px 12px', borderRadius: 'var(--radius-sm)' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Criação de Arte</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>{metrics.stageCounts.criacao} pedidos</div>
+                <div style={{ fontSize: '0.75rem', color: '#60a5fa', fontWeight: 600 }}>Criação de Arte</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>{metrics.stageCounts.criacao} artes criadas</div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  {metrics.totalOrders > 0 ? Math.round((metrics.stageCounts.criacao / metrics.totalOrders) * 100) : 0}% da produção
+                  Média: {metrics.teamDailyAvgCriacao} artes/dia • Meta setor: {metrics.teamDailyGoalCriacao}/dia
                 </div>
               </div>
               <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', padding: '10px 12px', borderRadius: 'var(--radius-sm)' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Exportação / Fechamento</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>{metrics.stageCounts.exportacao} pedidos</div>
+                <div style={{ fontSize: '0.75rem', color: '#a78bfa', fontWeight: 600 }}>Exportação / Fechamento</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>{metrics.stageCounts.exportacao} fechamentos</div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  {metrics.totalOrders > 0 ? Math.round((metrics.stageCounts.exportacao / metrics.totalOrders) * 100) : 0}% da produção
+                  Média: {metrics.teamDailyAvgExportacao} exp/dia • Meta setor: {metrics.teamDailyGoalExportacao}/dia
                 </div>
               </div>
               <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', padding: '10px 12px', borderRadius: 'var(--radius-sm)' }}>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Impressão / Plotter</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>{metrics.stageCounts.impressao} pedidos</div>
+                <div style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: 600 }}>Impressão / Plotter</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>{metrics.impressaoTotalPieces.toLocaleString('pt-BR')} peças impressas</div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  {metrics.totalMeters}m lineares
+                  Média: {metrics.teamDailyAvgImpressaoPieces} peças/dia • Meta setor: {metrics.teamDailyGoalImpressaoPieces}/dia
                 </div>
               </div>
             </div>
@@ -196,7 +197,7 @@ export function ExecutiveReportModal() {
           {/* Tabela de Produtividade dos Designers */}
           <div>
             <h4 style={{ fontSize: '0.8rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)', marginBottom: '8px' }}>
-              Quadro de Produtividade Individual:
+              Quadro de Produtividade Individual com Metas Personalizadas:
             </h4>
             <div className="table-responsive">
               <table className="modern-table">
@@ -205,11 +206,9 @@ export function ExecutiveReportModal() {
                     <th>Designer</th>
                     <th>Especialidade</th>
                     <th style={{ textAlign: 'center' }}>Pedidos</th>
-                    <th style={{ textAlign: 'center' }}>Média Diária</th>
-                    <th style={{ textAlign: 'center' }}>Peças</th>
-                    <th style={{ textAlign: 'center' }}>Metros</th>
-                    <th style={{ textAlign: 'center' }}>Meta</th>
-                    <th style={{ textAlign: 'center' }}>% Atingido</th>
+                    <th style={{ textAlign: 'center' }}>Criação (Artes/dia)</th>
+                    <th style={{ textAlign: 'center' }}>Exportação (Exp/dia)</th>
+                    <th style={{ textAlign: 'center' }}>Impressão (Peças/dia)</th>
                     <th style={{ textAlign: 'center' }}>Status</th>
                   </tr>
                 </thead>
@@ -219,16 +218,24 @@ export function ExecutiveReportModal() {
                       <td style={{ fontWeight: 600 }}>{d.name}</td>
                       <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{d.role}</td>
                       <td style={{ textAlign: 'center', fontWeight: 600 }}>{d.ordersCount}</td>
-                      <td style={{ textAlign: 'center', fontWeight: 600 }}>
-                        {d.dailyAvgOrders} ped/dia
+                      <td style={{ textAlign: 'center' }}>
+                        {d.goalCriacaoArtes > 0 ? (
+                          <><strong>{d.dailyAvgCriacao}</strong> / {d.goalCriacaoArtes} artes</>
+                        ) : '—'}
                       </td>
-                      <td style={{ textAlign: 'center' }}>{d.piecesCount}</td>
-                      <td style={{ textAlign: 'center' }}>{d.metersCount > 0 ? `${d.metersCount}m` : '-'}</td>
-                      <td style={{ textAlign: 'center', color: 'var(--text-muted)' }}>{d.dailyGoalOrders}/dia</td>
-                      <td style={{ textAlign: 'center', fontWeight: 600 }}>{d.goalAchievementRate}%</td>
+                      <td style={{ textAlign: 'center' }}>
+                        {d.goalExportacao > 0 ? (
+                          <><strong>{d.dailyAvgExportacao}</strong> / {d.goalExportacao} exp</>
+                        ) : '—'}
+                      </td>
+                      <td style={{ textAlign: 'center' }}>
+                        {d.goalImpressaoPecas > 0 ? (
+                          <><strong>{d.dailyAvgImpressaoPieces}</strong> / {d.goalImpressaoPecas} pçs</>
+                        ) : '—'}
+                      </td>
                       <td style={{ textAlign: 'center' }}>
                         <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>
-                          {d.performanceStatus}
+                          {d.performanceStatus} ({d.goalAchievementRate}%)
                         </span>
                       </td>
                     </tr>

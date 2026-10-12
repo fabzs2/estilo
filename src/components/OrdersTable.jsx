@@ -208,7 +208,7 @@ export function OrdersTable({ onOpenQuickEntry }) {
                   <th>Cliente & Detalhes do Uniforme</th>
                   <th>Etapa</th>
                   <th>Designer Responsável</th>
-                  <th style={{ textAlign: 'center' }}>Peças / Metros</th>
+                  <th style={{ textAlign: 'center' }}>Produção (Artes / Exp / Peças)</th>
                   <th>Tipo / Processo</th>
                   <th>Obs</th>
                   <th style={{ textAlign: 'center', width: '80px' }}>Ações</th>
@@ -289,14 +289,16 @@ export function OrdersTable({ onOpenQuickEntry }) {
                         </div>
                       </td>
 
-                      {/* Peças e Metros */}
+                      {/* Produção por Categoria e Metros */}
                       <td style={{ textAlign: 'center', fontSize: '0.78rem' }}>
                         <div style={{ fontWeight: 600 }}>
-                          {item.piecesCount || 0} pçs
+                          {item.stage === 'criacao' && `${item.piecesCount > 0 ? item.piecesCount : 1} arte(s)`}
+                          {item.stage === 'exportacao' && `${item.piecesCount > 0 ? item.piecesCount : 1} exp`}
+                          {item.stage === 'impressao' && `${item.piecesCount || 0} peças`}
                         </div>
                         {Number(item.meters) > 0 && (
                           <div style={{ color: 'var(--text-muted)', fontSize: '0.7rem' }}>
-                            {item.meters}m
+                            {item.meters}m lineares
                           </div>
                         )}
                       </td>

@@ -47,9 +47,18 @@ export const mapDesignerFromDB = (row) => ({
   nickname: row.nickname || '',
   role: row.role || 'Designer Criação',
   avatarColor: row.avatar_color || '#3b82f6',
-  dailyGoalOrders: Number(row.daily_goal_orders) || 8,
-  dailyGoalMeters: Number(row.daily_goal_meters) || 0,
-  dailyGoalPieces: Number(row.daily_goal_pieces) || 50,
+  goalCriacaoArtes: row.goal_criacao_artes !== null && row.goal_criacao_artes !== undefined 
+    ? Number(row.goal_criacao_artes) 
+    : (row.daily_goal_orders !== null && row.daily_goal_orders !== undefined ? Number(row.daily_goal_orders) : 8),
+  goalExportacao: row.goal_exportacao !== null && row.goal_exportacao !== undefined 
+    ? Number(row.goal_exportacao) 
+    : (row.daily_goal_orders !== null && row.daily_goal_orders !== undefined ? Number(row.daily_goal_orders) : 10),
+  goalImpressaoPecas: row.goal_impressao_pecas !== null && row.goal_impressao_pecas !== undefined 
+    ? Number(row.goal_impressao_pecas) 
+    : (row.daily_goal_pieces !== null && row.daily_goal_pieces !== undefined ? Number(row.daily_goal_pieces) : 120),
+  dailyGoalOrders: Number(row.daily_goal_orders ?? 8),
+  dailyGoalMeters: Number(row.daily_goal_meters ?? 0),
+  dailyGoalPieces: Number(row.daily_goal_pieces ?? 50),
   active: row.active ?? true,
   createdAt: row.created_at
 });
@@ -60,9 +69,12 @@ export const mapDesignerToDB = (d) => ({
   nickname: d.nickname || null,
   role: d.role || 'Designer Criação',
   avatar_color: d.avatarColor || '#3b82f6',
-  daily_goal_orders: Number(d.dailyGoalOrders) || 8,
-  daily_goal_meters: Number(d.dailyGoalMeters) || 0,
-  daily_goal_pieces: Number(d.dailyGoalPieces) || 50,
+  goal_criacao_artes: Number(d.goalCriacaoArtes ?? 8),
+  goal_exportacao: Number(d.goalExportacao ?? 10),
+  goal_impressao_pecas: Number(d.goalImpressaoPecas ?? 120),
+  daily_goal_orders: Number(d.dailyGoalOrders ?? 8),
+  daily_goal_meters: Number(d.dailyGoalMeters ?? 0),
+  daily_goal_pieces: Number(d.dailyGoalPieces ?? 50),
   active: d.active ?? true
 });
 

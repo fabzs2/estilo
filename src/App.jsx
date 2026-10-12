@@ -10,6 +10,7 @@ import { BatchEntryModal } from './components/BatchEntryModal';
 import { ExecutiveReportModal } from './components/ExecutiveReportModal';
 import { BackupModal } from './components/BackupModal';
 import { SupabaseModal } from './components/SupabaseModal';
+import { SectorGoalsModal } from './components/SectorGoalsModal';
 
 export function AppContent() {
   const [activeTab, setActiveTab] = useState('dashboard');
@@ -55,6 +56,7 @@ export function AppContent() {
         isOpen={isSupabaseModalOpen}
         onClose={() => setIsSupabaseModalOpen(false)}
       />
+      <SectorGoalsModal />
     </div>
   );
 }

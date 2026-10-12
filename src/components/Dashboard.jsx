@@ -1,6 +1,5 @@
 import React, { useState, useEffect } from 'react';
 import { useProduction } from '../context/ProductionContext';
-import { STAGES } from '../constants/initialData';
 import { 
   TrendingUp, 
   Layers, 
@@ -10,10 +9,8 @@ import {
   Shirt, 
   PlusCircle, 
   ChevronRight,
-  CheckCircle2,
-  AlertTriangle,
   PenTool,
-  Clock
+  Target
 } from 'lucide-react';
 
 import {
@@ -43,7 +40,14 @@ ChartJS.register(
 );
 
 export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
-  const { metrics, periodFilter, dateBounds, setIsQuickEntryOpen, setSelectedDesignerFilter } = useProduction();
+  const { 
+    metrics, 
+    periodFilter, 
+    dateBounds, 
+    setIsQuickEntryOpen, 
+    setSelectedDesignerFilter,
+    setIsSectorGoalsModalOpen 
+  } = useProduction();
   const [isLoading, setIsLoading] = useState(false);
 
   // Efeito sutil de transição ao alternar período
@@ -96,20 +100,20 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
     labels: metrics.designerStats.map((d) => d.nickname || d.name),
     datasets: [
       {
-        label: 'Criação de Arte',
+        label: 'Criação (Artes)',
         data: metrics.designerStats.map((d) => d.criacaoCount),
         backgroundColor: '#60a5fa',
         borderRadius: 3
       },
       {
-        label: 'Exportação / Fechamento',
+        label: 'Exportação (Fechamentos)',
         data: metrics.designerStats.map((d) => d.exportacaoCount),
         backgroundColor: '#a78bfa',
         borderRadius: 3
       },
       {
-        label: 'Impressão / Plotter',
-        data: metrics.designerStats.map((d) => d.impressaoCount),
+        label: 'Impressão (Peças)',
+        data: metrics.designerStats.map((d) => d.impressaoPieces),
         backgroundColor: '#34d399',
         borderRadius: 3
       }
@@ -161,14 +165,46 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
 
   return (
     <div className={`dashboard-view ${isLoading ? 'opacity-80' : ''}`} style={{ transition: 'opacity 0.15s ease' }}>
-      {/* 1. Grid de KPIs Principais & Médias */}
+      {/* Barra de Título das Metas por Categoria */}
+      <div 
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '16px',
+          flexWrap: 'wrap',
+          gap: '12px'
+        }}
+      >
+        <div>
+          <h2 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <TrendingUp size={18} color="var(--accent-sky)" />
+            Metas & Médias por Categoria ({dateBounds.label})
+          </h2>
+          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+            <strong>Criação:</strong> artes diárias • <strong>Exportação:</strong> exportações diárias • <strong>Impressão:</strong> somente peças impressas
+          </p>
+        </div>
+
+        <button
+          id="btn-adjust-sector-goals"
+          className="btn btn-secondary btn-sm"
+          onClick={() => setIsSectorGoalsModalOpen(true)}
+          title="Personalizar metas diárias globais do setor"
+        >
+          <Target size={14} color="var(--accent-sky)" />
+          Personalizar Metas do Setor
+        </button>
+      </div>
+
+      {/* 1. Grid de Metas & KPIs Principais por Categoria */}
       <section className="kpi-grid">
-        {/* Média Diária por Designer */}
-        <div className="kpi-card">
+        {/* Criação: Artes Diárias */}
+        <div className="kpi-card" style={{ borderTop: '2px solid #60a5fa' }}>
           <div className="kpi-header">
-            <span className="kpi-title">Média Diária / Designer</span>
+            <span className="kpi-title" style={{ color: '#60a5fa', fontWeight: 600 }}>🎨 Criação de Arte</span>
             <div className="kpi-icon-wrap">
-              <TrendingUp size={16} />
+              <PenTool size={16} color="#60a5fa" />
             </div>
           </div>
           <div className="kpi-body">
@@ -176,21 +212,81 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
               <div className="skeleton" style={{ height: '32px', width: '120px', marginBottom: '6px' }} />
             ) : (
               <div className="kpi-value">
-                {metrics.teamDailyAvgOrders.toFixed(1)}
-                <span className="kpi-unit">pedidos / dia</span>
+                {metrics.teamDailyAvgCriacao}
+                <span className="kpi-unit">artes / dia</span>
               </div>
             )}
           </div>
           <div className="kpi-footer">
-            <span className="kpi-badge badge-neutral">Média do Setor</span>
-            <span>{metrics.activeDesignersCount} designers ativos</span>
+            <span className="kpi-badge badge-neutral">
+              Meta: {metrics.teamDailyGoalCriacao} artes/dia
+            </span>
+            <span style={{ color: metrics.teamDailyGoalCriacao > 0 && metrics.teamDailyAvgCriacao >= metrics.teamDailyGoalCriacao ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
+              {metrics.stageCounts.criacao} artes ({metrics.teamDailyGoalCriacao > 0 ? Math.round((metrics.teamDailyAvgCriacao / metrics.teamDailyGoalCriacao) * 100) : 100}%)
+            </span>
           </div>
         </div>
 
-        {/* Total de Pedidos Concluídos */}
-        <div className="kpi-card">
+        {/* Exportação: Exportações Diárias */}
+        <div className="kpi-card" style={{ borderTop: '2px solid #a78bfa' }}>
           <div className="kpi-header">
-            <span className="kpi-title">Total de Pedidos</span>
+            <span className="kpi-title" style={{ color: '#a78bfa', fontWeight: 600 }}>📐 Exportação / Fechamento</span>
+            <div className="kpi-icon-wrap">
+              <Layers size={16} color="#a78bfa" />
+            </div>
+          </div>
+          <div className="kpi-body">
+            {isLoading ? (
+              <div className="skeleton" style={{ height: '32px', width: '120px', marginBottom: '6px' }} />
+            ) : (
+              <div className="kpi-value">
+                {metrics.teamDailyAvgExportacao}
+                <span className="kpi-unit">exp / dia</span>
+              </div>
+            )}
+          </div>
+          <div className="kpi-footer">
+            <span className="kpi-badge badge-neutral">
+              Meta: {metrics.teamDailyGoalExportacao} exp/dia
+            </span>
+            <span style={{ color: metrics.teamDailyGoalExportacao > 0 && metrics.teamDailyAvgExportacao >= metrics.teamDailyGoalExportacao ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
+              {metrics.stageCounts.exportacao} fechamentos ({metrics.teamDailyGoalExportacao > 0 ? Math.round((metrics.teamDailyAvgExportacao / metrics.teamDailyGoalExportacao) * 100) : 100}%)
+            </span>
+          </div>
+        </div>
+
+        {/* Impressão: Somente Peças Impressas */}
+        <div className="kpi-card" style={{ borderTop: '2px solid #34d399' }}>
+          <div className="kpi-header">
+            <span className="kpi-title" style={{ color: '#34d399', fontWeight: 600 }}>🖨️ Impressão (Peças)</span>
+            <div className="kpi-icon-wrap">
+              <Printer size={16} color="#34d399" />
+            </div>
+          </div>
+          <div className="kpi-body">
+            {isLoading ? (
+              <div className="skeleton" style={{ height: '32px', width: '120px', marginBottom: '6px' }} />
+            ) : (
+              <div className="kpi-value">
+                {metrics.teamDailyAvgImpressaoPieces}
+                <span className="kpi-unit">peças / dia</span>
+              </div>
+            )}
+          </div>
+          <div className="kpi-footer">
+            <span className="kpi-badge badge-neutral">
+              Meta: {metrics.teamDailyGoalImpressaoPieces} peças/dia
+            </span>
+            <span style={{ color: metrics.teamDailyGoalImpressaoPieces > 0 && metrics.teamDailyAvgImpressaoPieces >= metrics.teamDailyGoalImpressaoPieces ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
+              {metrics.impressaoTotalPieces.toLocaleString('pt-BR')} peças ({metrics.teamDailyGoalImpressaoPieces > 0 ? Math.round((metrics.teamDailyAvgImpressaoPieces / metrics.teamDailyGoalImpressaoPieces) * 100) : 100}%)
+            </span>
+          </div>
+        </div>
+
+        {/* Total Geral da Produção */}
+        <div className="kpi-card" style={{ borderTop: '2px solid #64748b' }}>
+          <div className="kpi-header">
+            <span className="kpi-title">📦 Total da Produção</span>
             <div className="kpi-icon-wrap">
               <Award size={16} />
             </div>
@@ -206,101 +302,8 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
             )}
           </div>
           <div className="kpi-footer">
-            <span className="kpi-badge badge-neutral">{metrics.workingDaysCount} dia(s) com registro</span>
-            <span>Média {metrics.avgOrdersPerDesigner} / membro</span>
-          </div>
-        </div>
-
-        {/* Metragem Linear Impressa */}
-        <div className="kpi-card">
-          <div className="kpi-header">
-            <span className="kpi-title">Metragem de Impressão</span>
-            <div className="kpi-icon-wrap">
-              <Ruler size={16} />
-            </div>
-          </div>
-          <div className="kpi-body">
-            {isLoading ? (
-              <div className="skeleton" style={{ height: '32px', width: '100px', marginBottom: '6px' }} />
-            ) : (
-              <div className="kpi-value">
-                {metrics.totalMeters}
-                <span className="kpi-unit">metros lineares</span>
-              </div>
-            )}
-          </div>
-          <div className="kpi-footer">
-            <span className="kpi-badge badge-neutral">Média: {metrics.teamDailyAvgMeters} m/dia</span>
-            <span>Papel / Sublimação</span>
-          </div>
-        </div>
-
-        {/* Volume de Peças de Uniformes */}
-        <div className="kpi-card">
-          <div className="kpi-header">
-            <span className="kpi-title">Volume de Peças</span>
-            <div className="kpi-icon-wrap">
-              <Shirt size={16} />
-            </div>
-          </div>
-          <div className="kpi-body">
-            {isLoading ? (
-              <div className="skeleton" style={{ height: '32px', width: '110px', marginBottom: '6px' }} />
-            ) : (
-              <div className="kpi-value">
-                {metrics.totalPieces.toLocaleString('pt-BR')}
-                <span className="kpi-unit">peças</span>
-              </div>
-            )}
-          </div>
-          <div className="kpi-footer">
-            <span className="kpi-badge badge-neutral">Média: {metrics.teamDailyAvgPieces} peças/dia</span>
-            <span>Grade Total</span>
-          </div>
-        </div>
-      </section>
-
-      {/* 2. Mini-Cards das 3 Etapas Operacionais */}
-      <section className="stages-summary-bar">
-        {/* Criação */}
-        <div className="stage-card">
-          <div className="stage-card-icon">
-            <PenTool size={18} />
-          </div>
-          <div className="stage-card-info">
-            <h4>Criação de Artes</h4>
-            <div className="stage-card-count">{metrics.stageCounts.criacao} pedidos</div>
-            <div className="stage-card-meta">
-              {metrics.totalOrders > 0 ? Math.round((metrics.stageCounts.criacao / metrics.totalOrders) * 100) : 0}% da produção
-            </div>
-          </div>
-        </div>
-
-        {/* Exportação */}
-        <div className="stage-card">
-          <div className="stage-card-icon">
-            <Layers size={18} />
-          </div>
-          <div className="stage-card-info">
-            <h4>Exportação / Fechamento</h4>
-            <div className="stage-card-count">{metrics.stageCounts.exportacao} pedidos</div>
-            <div className="stage-card-meta">
-              {metrics.totalOrders > 0 ? Math.round((metrics.stageCounts.exportacao / metrics.totalOrders) * 100) : 0}% da produção
-            </div>
-          </div>
-        </div>
-
-        {/* Impressão */}
-        <div className="stage-card">
-          <div className="stage-card-icon">
-            <Printer size={18} />
-          </div>
-          <div className="stage-card-info">
-            <h4>Impressão / Plotters</h4>
-            <div className="stage-card-count">{metrics.stageCounts.impressao} pedidos</div>
-            <div className="stage-card-meta">
-              {metrics.totalMeters}m lineares rodados
-            </div>
+            <span className="kpi-badge badge-neutral">{metrics.totalMeters}m lineares plotter</span>
+            <span>{metrics.workingDaysCount} dia(s) úteis</span>
           </div>
         </div>
       </section>
@@ -313,7 +316,7 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
             <div>
               <h3 className="chart-title">Produção por Designer & Etapas</h3>
               <p className="chart-desc">
-                Comparativo de pedidos entregues em Criação, Exportação e Impressão
+                Criação (artes), Exportação (fechamentos) e Impressão (peças impressas)
               </p>
             </div>
           </div>
@@ -336,13 +339,13 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
         </div>
       </section>
 
-      {/* 4. Tabela de Desempenho e Médias dos Designers */}
+      {/* 4. Tabela de Desempenho e Médias dos Designers com Metas por Categoria */}
       <section className="ranking-section">
         <div className="ranking-header">
           <div>
-            <h3 className="section-title">Desempenho & Médias por Designer</h3>
+            <h3 className="section-title">Desempenho & Médias por Categoria</h3>
             <p style={{ fontSize: '0.775rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              Base de cálculo ajustada pelos dias registrados no período ({dateBounds.label})
+              Metas: <strong>Criação</strong> (artes diárias) • <strong>Exportação</strong> (exportações diárias) • <strong>Impressão</strong> (peças impressas diárias)
             </p>
           </div>
 
@@ -360,26 +363,31 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
           <table className="modern-table">
             <thead>
               <tr>
-                <th style={{ width: '50px' }}>Pos.</th>
+                <th style={{ width: '45px' }}>Pos.</th>
                 <th>Designer</th>
-                <th style={{ textAlign: 'center' }}>Pedidos</th>
-                <th style={{ textAlign: 'center' }}>Média Diária</th>
-                <th style={{ textAlign: 'center' }}>Peças / Metros</th>
-                <th>Etapas Concluídas</th>
-                <th style={{ minWidth: '140px' }}>Meta Diária ({metrics.designerStats[0]?.dailyGoalOrders || 8} ped/dia)</th>
-                <th style={{ textAlign: 'center' }}>Status</th>
+                <th style={{ textAlign: 'center' }}>Total Pedidos</th>
+                <th style={{ textAlign: 'center' }}>
+                  <span style={{ color: '#60a5fa' }}>🎨 Criação (Artes)</span>
+                </th>
+                <th style={{ textAlign: 'center' }}>
+                  <span style={{ color: '#a78bfa' }}>📐 Exportação (Exp.)</span>
+                </th>
+                <th style={{ textAlign: 'center' }}>
+                  <span style={{ color: '#34d399' }}>🖨️ Impressão (Peças)</span>
+                </th>
+                <th style={{ textAlign: 'center' }}>Status / Meta</th>
                 <th style={{ textAlign: 'center' }}>Ação</th>
               </tr>
             </thead>
             <tbody>
               {metrics.rankedDesigners.length === 0 ? (
                 <tr>
-                  <td colSpan="9" style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--text-muted)' }}>
+                  <td colSpan="8" style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--text-muted)' }}>
                     <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
                       Nenhum designer cadastrado no momento
                     </div>
                     <p style={{ fontSize: '0.78rem', marginBottom: '14px' }}>
-                      Adicione os designers da sua equipe para começar a calcular as médias e metas.
+                      Adicione os designers da sua equipe para definir metas personalizadas por categoria.
                     </p>
                     <button 
                       className="btn btn-primary btn-sm"
@@ -392,133 +400,119 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
               ) : (
                 metrics.rankedDesigners.map((designer, index) => {
                   const statusColor =
-                  designer.performanceStatus === 'Superando'
-                    ? 'var(--accent-emerald)'
-                    : designer.performanceStatus === 'Na Meta'
-                    ? 'var(--text-primary)'
-                    : 'var(--accent-amber)';
+                    designer.performanceStatus === 'Superando'
+                      ? 'var(--accent-emerald)'
+                      : designer.performanceStatus === 'Na Meta'
+                      ? 'var(--text-primary)'
+                      : 'var(--accent-amber)';
 
-                return (
-                  <tr key={designer.id}>
-                    {/* Posição no Ranking */}
-                    <td style={{ fontWeight: 600, color: 'var(--text-muted)' }}>
-                      #{index + 1}
-                    </td>
+                  return (
+                    <tr key={designer.id}>
+                      {/* Posição */}
+                      <td style={{ fontWeight: 600, color: 'var(--text-muted)' }}>
+                        #{index + 1}
+                      </td>
 
-                    {/* Designer */}
-                    <td>
-                      <div className="designer-cell">
-                        <div className="avatar-badge">
-                          {designer.name.charAt(0)}
+                      {/* Designer */}
+                      <td>
+                        <div className="designer-cell">
+                          <div className="avatar-badge">
+                            {designer.name.charAt(0)}
+                          </div>
+                          <div className="designer-details">
+                            <div className="designer-name">{designer.name}</div>
+                            <div className="designer-role">{designer.role}</div>
+                          </div>
                         </div>
-                        <div className="designer-details">
-                          <div className="designer-name">{designer.name}</div>
-                          <div className="designer-role">{designer.role}</div>
-                        </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Pedidos no Período */}
-                    <td style={{ textAlign: 'center', fontWeight: 600 }}>
-                      {designer.ordersCount}
-                    </td>
+                      {/* Pedidos no Período */}
+                      <td style={{ textAlign: 'center', fontWeight: 600 }}>
+                        {designer.ordersCount}
+                      </td>
 
-                    {/* Média Diária */}
-                    <td style={{ textAlign: 'center' }}>
-                      <div
-                        style={{
-                          display: 'inline-flex',
-                          alignItems: 'baseline',
-                          gap: '3px',
-                          background: 'var(--bg-surface)',
-                          padding: '3px 8px',
-                          borderRadius: 'var(--radius-sm)',
-                          border: '1px solid var(--border-subtle)'
-                        }}
-                      >
-                        <span style={{ fontSize: '0.95rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                          {designer.dailyAvgOrders}
+                      {/* Criação: Artes Diárias vs Meta */}
+                      <td style={{ textAlign: 'center' }}>
+                        {designer.goalCriacaoArtes > 0 ? (
+                          <div>
+                            <div>
+                              <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                                {designer.dailyAvgCriacao}
+                              </span>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}> / {designer.goalCriacaoArtes} artes</span>
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: designer.rateCriacao >= 100 ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
+                              {designer.rateCriacao}% da meta
+                            </div>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
+                        )}
+                      </td>
+
+                      {/* Exportação: Exportações Diárias vs Meta */}
+                      <td style={{ textAlign: 'center' }}>
+                        {designer.goalExportacao > 0 ? (
+                          <div>
+                            <div>
+                              <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                                {designer.dailyAvgExportacao}
+                              </span>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}> / {designer.goalExportacao} exp</span>
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: designer.rateExportacao >= 100 ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
+                              {designer.rateExportacao}% da meta
+                            </div>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
+                        )}
+                      </td>
+
+                      {/* Impressão: Peças Impressas Diárias vs Meta */}
+                      <td style={{ textAlign: 'center' }}>
+                        {designer.goalImpressaoPecas > 0 ? (
+                          <div>
+                            <div>
+                              <span style={{ fontWeight: 700, color: 'var(--text-primary)', fontSize: '0.9rem' }}>
+                                {designer.dailyAvgImpressaoPieces}
+                              </span>
+                              <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}> / {designer.goalImpressaoPecas} pçs</span>
+                            </div>
+                            <div style={{ fontSize: '0.68rem', color: designer.rateImpressao >= 100 ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
+                              {designer.rateImpressao}% da meta
+                            </div>
+                          </div>
+                        ) : (
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>—</span>
+                        )}
+                      </td>
+
+                      {/* Status */}
+                      <td style={{ textAlign: 'center' }}>
+                        <span className="stage-badge" style={{ color: statusColor }}>
+                          {designer.performanceStatus} ({designer.goalAchievementRate}%)
                         </span>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>ped/dia</span>
-                      </div>
-                    </td>
+                      </td>
 
-                    {/* Peças / Metragem */}
-                    <td style={{ textAlign: 'center', fontSize: '0.775rem' }}>
-                      <div style={{ color: 'var(--text-primary)', fontWeight: 500 }}>
-                        {designer.piecesCount} peças
-                      </div>
-                      {designer.metersCount > 0 && (
-                        <div style={{ color: 'var(--text-muted)', fontSize: '0.725rem' }}>
-                          {designer.metersCount}m
-                        </div>
-                      )}
-                    </td>
-
-                    {/* Distribuição por Etapa */}
-                    <td>
-                      <div style={{ display: 'flex', gap: '4px', fontSize: '0.725rem' }}>
-                        {designer.criacaoCount > 0 && (
-                          <span className="stage-badge" style={{ color: '#60a5fa' }}>
-                            Criação: {designer.criacaoCount}
-                          </span>
-                        )}
-                        {designer.exportacaoCount > 0 && (
-                          <span className="stage-badge" style={{ color: '#a78bfa' }}>
-                            Exportação: {designer.exportacaoCount}
-                          </span>
-                        )}
-                        {designer.impressaoCount > 0 && (
-                          <span className="stage-badge" style={{ color: '#34d399' }}>
-                            Impressão: {designer.impressaoCount}
-                          </span>
-                        )}
-                      </div>
-                    </td>
-
-                    {/* Meta Diária & Barra de Progresso */}
-                    <td>
-                      <div className="goal-bar-container">
-                        <div className="goal-bar-text">
-                          <span style={{ color: 'var(--text-muted)' }}>Meta: {designer.dailyGoalOrders}/dia</span>
-                          <span style={{ color: statusColor }}>{designer.goalAchievementRate}%</span>
-                        </div>
-                        <div className="goal-bar-track">
-                          <div
-                            className="goal-bar-fill"
-                            style={{
-                              width: `${Math.min(100, designer.goalAchievementRate)}%`,
-                              background: statusColor
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </td>
-
-                    {/* Status */}
-                    <td style={{ textAlign: 'center' }}>
-                      <span className="stage-badge" style={{ color: statusColor }}>
-                        {designer.performanceStatus}
-                      </span>
-                    </td>
-
-                    {/* Ações */}
-                    <td style={{ textAlign: 'center' }}>
-                      <button
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => {
-                          setSelectedDesignerFilter(designer.id);
-                          if (onSelectDesigner) onSelectDesigner(designer.id);
-                        }}
-                        title="Ver histórico deste designer"
-                      >
-                        Ver Pedidos
-                        <ChevronRight size={13} />
-                      </button>
-                    </td>
-                  </tr>
-                );
-              }))}
+                      {/* Ações */}
+                      <td style={{ textAlign: 'center' }}>
+                        <button
+                          className="btn btn-secondary btn-sm"
+                          onClick={() => {
+                            setSelectedDesignerFilter(designer.id);
+                            if (onSelectDesigner) onSelectDesigner(designer.id);
+                          }}
+                          title="Ver pedidos deste designer"
+                        >
+                          Ver Pedidos
+                          <ChevronRight size={13} />
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })
+              )}
             </tbody>
           </table>
         </div>

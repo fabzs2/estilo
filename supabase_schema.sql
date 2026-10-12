@@ -10,7 +10,11 @@ CREATE TABLE IF NOT EXISTS designers (
   nickname TEXT,
   role TEXT DEFAULT 'Designer Criação',
   avatar_color TEXT DEFAULT '#3b82f6',
-  daily_goal_orders INTEGER DEFAULT 8,
+  -- Metas Personalizadas por Categoria
+  goal_criacao_artes INTEGER DEFAULT 8,       -- Criação: meta de artes diárias
+  goal_exportacao INTEGER DEFAULT 10,         -- Exportação: meta de exportações diárias
+  goal_impressao_pecas INTEGER DEFAULT 120,   -- Impressão: meta de peças impressas diárias
+  daily_goal_orders INTEGER DEFAULT 8,        -- Compatibilidade
   daily_goal_meters NUMERIC DEFAULT 0,
   daily_goal_pieces INTEGER DEFAULT 50,
   active BOOLEAN DEFAULT true,

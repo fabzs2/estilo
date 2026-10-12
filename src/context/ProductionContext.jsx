@@ -117,7 +117,32 @@ export function ProductionProvider({ children }) {
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
+  const [isSectorGoalsModalOpen, setIsSectorGoalsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
+
+  // Metas Globais do Setor (Personalizadas por Categoria ou calculadas pela equipe)
+  const [sectorGoals, setSectorGoals] = useState(() => {
+    try {
+      const saved = localStorage.getItem('designflow_sector_goals');
+      return saved ? JSON.parse(saved) : null;
+    } catch (e) {
+      return null;
+    }
+  });
+
+  const updateSectorGoals = (newGoals) => {
+    setSectorGoals(newGoals);
+    try {
+      localStorage.setItem('designflow_sector_goals', JSON.stringify(newGoals));
+    } catch (e) {}
+  };
+
+  const resetSectorGoals = () => {
+    setSectorGoals(null);
+    try {
+      localStorage.removeItem('designflow_sector_goals');
+    } catch (e) {}
+  };
 
   // Ações de Entradas
   const addEntry = async (newEntry) => {
@@ -215,6 +240,9 @@ export function ProductionProvider({ children }) {
       ...newDes,
       id: `des_${Date.now()}`,
       active: true,
+      goalCriacaoArtes: Number(newDes.goalCriacaoArtes) || 8,
+      goalExportacao: Number(newDes.goalExportacao) || 10,
+      goalImpressaoPecas: Number(newDes.goalImpressaoPecas) || 120,
       dailyGoalOrders: Number(newDes.dailyGoalOrders) || 8,
       dailyGoalMeters: Number(newDes.dailyGoalMeters) || 0,
       dailyGoalPieces: Number(newDes.dailyGoalPieces) || 50
@@ -351,21 +379,32 @@ export function ProductionProvider({ children }) {
     });
   }, [periodEntries, selectedStageFilter, selectedDesignerFilter, searchTerm]);
 
-  // Cálculos de Métricas & Médias do Setor
+  // Cálculos de Métricas & Médias do Setor por Categoria
   const metrics = useMemo(() => {
     const totalOrders = periodEntries.length;
     let totalPieces = 0;
     let totalMeters = 0;
+    let impressaoTotalPieces = 0;
 
-    const stageCounts = { criacao: 0, exportacao: 0, impressao: 0 };
     const uniqueDates = new Set();
+
+    // Contagem detalhada por categoria
+    const criacaoEntriesAll = periodEntries.filter((e) => e.stage === 'criacao');
+    const exportacaoEntriesAll = periodEntries.filter((e) => e.stage === 'exportacao');
+    const impressaoEntriesAll = periodEntries.filter((e) => e.stage === 'impressao');
+
+    // Criação: total de artes (se o pedido tiver piecesCount > 0 conta o número de artes, senão 1 arte por registro)
+    const criacaoTotalArtes = criacaoEntriesAll.reduce((acc, e) => acc + (Number(e.piecesCount) > 0 ? Number(e.piecesCount) : 1), 0);
+    // Exportação: total de fechamentos/exportações (se o pedido tiver piecesCount > 0 conta a qtd, senão 1 exp por registro)
+    const exportacaoTotalCount = exportacaoEntriesAll.reduce((acc, e) => acc + (Number(e.piecesCount) > 0 ? Number(e.piecesCount) : 1), 0);
+    // Impressão: estritamente SOMENTE PEÇAS IMPRESSAS
+    impressaoEntriesAll.forEach((e) => {
+      impressaoTotalPieces += Number(e.piecesCount) || 0;
+    });
 
     periodEntries.forEach((item) => {
       totalPieces += Number(item.piecesCount) || 0;
       totalMeters += Number(item.meters) || 0;
-      if (item.stage && stageCounts[item.stage] !== undefined) {
-        stageCounts[item.stage]++;
-      }
       if (item.date) uniqueDates.add(item.date);
     });
 
@@ -373,17 +412,36 @@ export function ProductionProvider({ children }) {
     const activeDesigners = designers.filter((d) => d.active);
     const activeDesignersCount = Math.max(1, activeDesigners.length);
 
+    // Médias Diárias Globais do Setor
     const teamDailyAvgOrders = activeDesigners.length > 0 ? (totalOrders / workingDaysCount) : 0;
     const avgOrdersPerDesigner = activeDesigners.length > 0 ? (totalOrders / activeDesignersCount) : 0;
-    const teamDailyAvgMeters = activeDesigners.length > 0 ? (totalMeters / workingDaysCount) : 0;
-    const teamDailyAvgPieces = activeDesigners.length > 0 ? (totalPieces / workingDaysCount) : 0;
+    
+    // Médias Diárias Específicas por Categoria
+    // Criação: artes diárias
+    const teamDailyAvgCriacao = activeDesigners.length > 0 ? (criacaoTotalArtes / workingDaysCount) : 0;
+    // Exportação: exportações diárias
+    const teamDailyAvgExportacao = activeDesigners.length > 0 ? (exportacaoTotalCount / workingDaysCount) : 0;
+    // Impressão: somente peças impressas diárias
+    const teamDailyAvgImpressaoPieces = activeDesigners.length > 0 ? Math.round(impressaoTotalPieces / workingDaysCount) : 0;
 
-    const teamDailyGoalOrders = activeDesigners.reduce((acc, d) => acc + (d.dailyGoalOrders || 0), 0);
-    const teamPeriodGoalOrders = teamDailyGoalOrders * (dateBounds.daysCount || 1);
-    const teamGoalAchievement = teamPeriodGoalOrders > 0
-      ? Math.round((totalOrders / teamPeriodGoalOrders) * 100)
-      : 100;
+    // Metas Globais do Setor (personalizadas ou calculadas a partir da soma dos designers com meta > 0)
+    const calculatedTeamGoalCriacao = activeDesigners.reduce((acc, d) => acc + (Number(d.goalCriacaoArtes) || 0), 0);
+    const calculatedTeamGoalExportacao = activeDesigners.reduce((acc, d) => acc + (Number(d.goalExportacao) || 0), 0);
+    const calculatedTeamGoalImpressaoPieces = activeDesigners.reduce((acc, d) => acc + (Number(d.goalImpressaoPecas) || 0), 0);
 
+    const teamDailyGoalCriacao = sectorGoals?.criacao !== undefined && sectorGoals?.criacao !== null
+      ? Number(sectorGoals.criacao)
+      : (calculatedTeamGoalCriacao || 8);
+
+    const teamDailyGoalExportacao = sectorGoals?.exportacao !== undefined && sectorGoals?.exportacao !== null
+      ? Number(sectorGoals.exportacao)
+      : (calculatedTeamGoalExportacao || 10);
+
+    const teamDailyGoalImpressaoPieces = sectorGoals?.impressao !== undefined && sectorGoals?.impressao !== null
+      ? Number(sectorGoals.impressao)
+      : (calculatedTeamGoalImpressaoPieces || 120);
+
+    // Estatísticas Individuais por Designer
     const designerStats = designers.map((des) => {
       const desEntries = periodEntries.filter((e) => e.designerId === des.id);
       const desDates = new Set(desEntries.map((e) => e.date).filter(Boolean));
@@ -393,22 +451,63 @@ export function ProductionProvider({ children }) {
       const piecesCount = desEntries.reduce((acc, e) => acc + (Number(e.piecesCount) || 0), 0);
       const metersCount = desEntries.reduce((acc, e) => acc + (Number(e.meters) || 0), 0);
 
-      const criacaoCount = desEntries.filter((e) => e.stage === 'criacao').length;
-      const exportacaoCount = desEntries.filter((e) => e.stage === 'exportacao').length;
-      const impressaoCount = desEntries.filter((e) => e.stage === 'impressao').length;
+      // Quantidades por Categoria do Designer
+      const desCriacaoEntries = desEntries.filter((e) => e.stage === 'criacao');
+      const desExportacaoEntries = desEntries.filter((e) => e.stage === 'exportacao');
+      const desImpressaoEntries = desEntries.filter((e) => e.stage === 'impressao');
 
+      // Criação: artes diárias
+      const criacaoCount = desCriacaoEntries.reduce((acc, e) => acc + (Number(e.piecesCount) > 0 ? Number(e.piecesCount) : 1), 0);
+      // Exportação: exportações diárias
+      const exportacaoCount = desExportacaoEntries.reduce((acc, e) => acc + (Number(e.piecesCount) > 0 ? Number(e.piecesCount) : 1), 0);
+      // Impressão: somente peças impressas
+      const impressaoPieces = desImpressaoEntries.reduce((acc, e) => acc + (Number(e.piecesCount) || 0), 0);
+      const impressaoCount = desImpressaoEntries.length;
+
+      // Médias Diárias Específicas
+      const dailyAvgCriacao = Number((criacaoCount / desWorkingDays).toFixed(1)); // artes/dia
+      const dailyAvgExportacao = Number((exportacaoCount / desWorkingDays).toFixed(1)); // exportações/dia
+      const dailyAvgImpressaoPieces = Math.round(impressaoPieces / desWorkingDays); // peças impressas/dia
       const dailyAvgOrders = Number((ordersCount / desWorkingDays).toFixed(1));
-      const dailyAvgPieces = Math.round(piecesCount / desWorkingDays);
-      const dailyAvgMeters = Number((metersCount / desWorkingDays).toFixed(1));
 
-      const goalOrders = des.dailyGoalOrders || 8;
-      const goalAchievementRate = goalOrders > 0
-        ? Math.round((dailyAvgOrders / goalOrders) * 100)
-        : 100;
+      // Metas do Designer (0 se não atuar na categoria)
+      const goalCriacao = des.goalCriacaoArtes !== undefined && des.goalCriacaoArtes !== null ? Number(des.goalCriacaoArtes) : 8;
+      const goalExportacao = des.goalExportacao !== undefined && des.goalExportacao !== null ? Number(des.goalExportacao) : 10;
+      const goalImpressaoPieces = des.goalImpressaoPecas !== undefined && des.goalImpressaoPecas !== null ? Number(des.goalImpressaoPecas) : 120;
 
+      // Taxas de Atingimento por Categoria (null se meta for 0 / desativada para este designer)
+      const rateCriacao = goalCriacao > 0 ? Math.round((dailyAvgCriacao / goalCriacao) * 100) : null;
+      const rateExportacao = goalExportacao > 0 ? Math.round((dailyAvgExportacao / goalExportacao) * 100) : null;
+      const rateImpressao = goalImpressaoPieces > 0 ? Math.round((dailyAvgImpressaoPieces / goalImpressaoPieces) * 100) : null;
+
+      // Determinar Etapa Principal e Avaliação Geral estritamente com base nas metas ativas (> 0)
+      const activeRates = [];
+      if (goalCriacao > 0 && rateCriacao !== null) activeRates.push(rateCriacao);
+      if (goalExportacao > 0 && rateExportacao !== null) activeRates.push(rateExportacao);
+      if (goalImpressaoPieces > 0 && rateImpressao !== null) activeRates.push(rateImpressao);
+
+      let goalAchievementRate = 100;
       let performanceStatus = 'Na Meta';
-      if (goalAchievementRate >= 115) performanceStatus = 'Superando';
-      else if (goalAchievementRate < 85) performanceStatus = 'Abaixo da Meta';
+
+      if (activeRates.length === 0) {
+        goalAchievementRate = 100;
+        performanceStatus = 'Sem Meta';
+      } else {
+        goalAchievementRate = Math.round(activeRates.reduce((a, b) => a + b, 0) / activeRates.length);
+        if (goalAchievementRate >= 115) performanceStatus = 'Superando';
+        else if (goalAchievementRate < 85) performanceStatus = 'Abaixo da Meta';
+        else performanceStatus = 'Na Meta';
+      }
+
+      // Identificar especialidade dominante para visualização
+      const roleLower = (des.role || '').toLowerCase();
+      let primaryStage = 'geral';
+      if (goalImpressaoPieces > 0 && goalCriacao === 0 && goalExportacao === 0) primaryStage = 'impressao';
+      else if (goalExportacao > 0 && goalCriacao === 0 && goalImpressaoPieces === 0) primaryStage = 'exportacao';
+      else if (goalCriacao > 0 && goalExportacao === 0 && goalImpressaoPieces === 0) primaryStage = 'criacao';
+      else if (roleLower.includes('impress') || roleLower.includes('rip')) primaryStage = 'impressao';
+      else if (roleLower.includes('export') || roleLower.includes('fechamento')) primaryStage = 'exportacao';
+      else if (roleLower.includes('cria') || roleLower.includes('arte')) primaryStage = 'criacao';
 
       return {
         ...des,
@@ -418,35 +517,53 @@ export function ProductionProvider({ children }) {
         criacaoCount,
         exportacaoCount,
         impressaoCount,
+        impressaoPieces,
         workingDays: desDates.size,
         dailyAvgOrders,
-        dailyAvgPieces,
-        dailyAvgMeters,
+        dailyAvgCriacao,
+        dailyAvgExportacao,
+        dailyAvgImpressaoPieces,
+        goalCriacaoArtes: goalCriacao,
+        goalExportacao: goalExportacao,
+        goalImpressaoPecas: goalImpressaoPieces,
+        rateCriacao,
+        rateExportacao,
+        rateImpressao,
+        primaryStage,
         goalAchievementRate,
         performanceStatus
       };
     });
 
-    const rankedDesigners = [...designerStats].sort((a, b) => b.ordersCount - a.ordersCount);
+    const rankedDesigners = [...designerStats].sort((a, b) => {
+      // Ordena por desempenho geral e depois pedidos
+      return b.goalAchievementRate - a.goalAchievementRate || b.ordersCount - a.ordersCount;
+    });
 
     return {
       totalOrders,
       totalPieces,
+      impressaoTotalPieces,
       totalMeters: Number(totalMeters.toFixed(1)),
       workingDaysCount: uniqueDates.size || 0,
       activeDesignersCount: activeDesigners.length,
       teamDailyAvgOrders: Number(teamDailyAvgOrders.toFixed(1)),
       avgOrdersPerDesigner: Number(avgOrdersPerDesigner.toFixed(1)),
-      teamDailyAvgMeters: Number(teamDailyAvgMeters.toFixed(1)),
-      teamDailyAvgPieces: Math.round(teamDailyAvgPieces),
-      teamDailyGoalOrders,
-      teamPeriodGoalOrders,
-      teamGoalAchievement,
-      stageCounts,
+      teamDailyAvgCriacao: Number(teamDailyAvgCriacao.toFixed(1)),
+      teamDailyAvgExportacao: Number(teamDailyAvgExportacao.toFixed(1)),
+      teamDailyAvgImpressaoPieces: Math.round(teamDailyAvgImpressaoPieces),
+      teamDailyGoalCriacao,
+      teamDailyGoalExportacao,
+      teamDailyGoalImpressaoPieces,
+      stageCounts: {
+        criacao: criacaoTotalArtes,
+        exportacao: exportacaoTotalCount,
+        impressao: periodEntries.filter((e) => e.stage === 'impressao').length
+      },
       designerStats,
       rankedDesigners
     };
-  }, [periodEntries, designers, dateBounds]);
+  }, [periodEntries, designers, dateBounds, sectorGoals]);
 
   const exportToCSV = () => {
     if (!filteredEntries.length) {
@@ -554,6 +671,11 @@ export function ProductionProvider({ children }) {
         setIsTeamModalOpen,
         isSupabaseModalOpen,
         setIsSupabaseModalOpen,
+        isSectorGoalsModalOpen,
+        setIsSectorGoalsModalOpen,
+        sectorGoals,
+        updateSectorGoals,
+        resetSectorGoals,
         isSupabaseActive,
         isLoadingDB,
         editingEntry,

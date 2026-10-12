@@ -5,9 +5,9 @@ import {
   UserPlus, 
   Edit3, 
   Trash2, 
-  Target, 
-  Ruler, 
-  Shirt, 
+  PenTool, 
+  Layers, 
+  Printer, 
   X
 } from 'lucide-react';
 
@@ -22,9 +22,9 @@ export function TeamManagement() {
     nickname: '',
     role: 'Designer Criação',
     avatarColor: '#3b82f6',
-    dailyGoalOrders: 8,
-    dailyGoalMeters: 0,
-    dailyGoalPieces: 50
+    goalCriacaoArtes: 8,
+    goalExportacao: 10,
+    goalImpressaoPecas: 120
   });
 
   const colorOptions = [
@@ -43,9 +43,9 @@ export function TeamManagement() {
       nickname: '',
       role: 'Designer Criação',
       avatarColor: colorOptions[Math.floor(Math.random() * colorOptions.length)],
-      dailyGoalOrders: 8,
-      dailyGoalMeters: 0,
-      dailyGoalPieces: 50
+      goalCriacaoArtes: 8,
+      goalExportacao: 10,
+      goalImpressaoPecas: 120
     });
     setIsFormOpen(true);
   };
@@ -57,9 +57,9 @@ export function TeamManagement() {
       nickname: designer.nickname || '',
       role: designer.role || '',
       avatarColor: designer.avatarColor || '#3b82f6',
-      dailyGoalOrders: designer.dailyGoalOrders || 8,
-      dailyGoalMeters: designer.dailyGoalMeters || 0,
-      dailyGoalPieces: designer.dailyGoalPieces || 50
+      goalCriacaoArtes: designer.goalCriacaoArtes ?? 8,
+      goalExportacao: designer.goalExportacao ?? 10,
+      goalImpressaoPecas: designer.goalImpressaoPecas ?? 120
     });
     setIsFormOpen(true);
   };
@@ -105,10 +105,10 @@ export function TeamManagement() {
         <div>
           <h2 style={{ fontSize: '1.15rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
             <Users size={18} color="var(--text-muted)" />
-            Equipe de Designers & Metas Diárias
+            Equipe de Designers & Metas por Categoria
           </h2>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-            Gerencie os membros e configure metas para cálculo de médias e produtividade.
+            Metas específicas: <strong>Criação</strong> (artes diárias), <strong>Exportação</strong> (exportações diárias) e <strong>Impressão</strong> (peças impressas).
           </p>
         </div>
 
@@ -166,17 +166,34 @@ export function TeamManagement() {
 
                 <div className="form-grid-2">
                   <div className="form-group">
-                    <label className="form-label" htmlFor="des-role">Cargo / Especialidade:</label>
+                    <label className="form-label" htmlFor="des-role">Cargo / Especialidade Principal:</label>
                     <select
                       id="des-role"
                       className="form-select"
                       value={formData.role}
-                      onChange={(e) => setFormData({ ...formData, role: e.target.value })}
+                      onChange={(e) => {
+                        const newRole = e.target.value;
+                        let presets = {};
+                        if (newRole === 'Designer Criação') {
+                          presets = { goalCriacaoArtes: 8, goalExportacao: 0, goalImpressaoPecas: 0 };
+                        } else if (newRole === 'Arte-Finalista & Exportação') {
+                          presets = { goalCriacaoArtes: 0, goalExportacao: 10, goalImpressaoPecas: 0 };
+                        } else if (newRole === 'Operador de Impressão / RIP') {
+                          presets = { goalCriacaoArtes: 0, goalExportacao: 0, goalImpressaoPecas: 120 };
+                        } else if (newRole === 'Designer Geral') {
+                          presets = { goalCriacaoArtes: 8, goalExportacao: 10, goalImpressaoPecas: 120 };
+                        }
+                        setFormData((prev) => ({
+                          ...prev,
+                          role: newRole,
+                          ...presets
+                        }));
+                      }}
                     >
-                      <option value="Designer Criação">Designer Criação (Layouts & Mockups)</option>
-                      <option value="Arte-Finalista & Exportação">Arte-Finalista & Exportação (Fechamento)</option>
-                      <option value="Operador de Impressão / RIP">Operador de Impressão / RIP</option>
-                      <option value="Designer Geral">Designer Geral (Todas as Etapas)</option>
+                      <option value="Designer Criação">Designer Criação (Foco em Artes)</option>
+                      <option value="Arte-Finalista & Exportação">Arte-Finalista (Foco em Exportação/Fechamento)</option>
+                      <option value="Operador de Impressão / RIP">Operador de Impressão (Foco em Peças Impressas)</option>
+                      <option value="Designer Geral">Designer Geral (Atua em Todas as Etapas)</option>
                       <option value="Pré-Impressão & DTF">Pré-Impressão & DTF / Serigrafia</option>
                     </select>
                   </div>
@@ -204,44 +221,65 @@ export function TeamManagement() {
                   </div>
                 </div>
 
-                <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '12px 0 16px', paddingTop: '12px' }}>
-                  <h4 style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '10px' }}>
-                    Metas Diárias para Cálculo da Média:
+                {/* Metas Personalizadas por Categoria */}
+                <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '14px 0 16px', paddingTop: '14px' }}>
+                  <h4 style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                    Metas Personalizadas por Categoria:
                   </h4>
+                  <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '12px' }}>
+                    Defina o objetivo diário esperado para cada etapa. Digite <strong>0</strong> caso o profissional não atue nessa etapa.
+                  </p>
+
                   <div className="form-grid-3">
                     <div className="form-group">
-                      <label className="form-label" htmlFor="des-goal-orders">Meta Pedidos/Dia:</label>
+                      <label className="form-label" htmlFor="des-goal-criacao">
+                        🎨 Criação:
+                      </label>
                       <input
-                        id="des-goal-orders"
+                        id="des-goal-criacao"
                         type="number"
-                        min="1"
+                        min="0"
                         className="form-input"
-                        value={formData.dailyGoalOrders}
-                        onChange={(e) => setFormData({ ...formData, dailyGoalOrders: Number(e.target.value) })}
+                        placeholder="Ex: 8"
+                        value={formData.goalCriacaoArtes}
+                        onChange={(e) => setFormData({ ...formData, goalCriacaoArtes: Number(e.target.value) })}
                         required
                       />
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>artes diárias (0 se não cria)</span>
                     </div>
+
                     <div className="form-group">
-                      <label className="form-label" htmlFor="des-goal-pieces">Meta Peças/Dia:</label>
+                      <label className="form-label" htmlFor="des-goal-exportacao">
+                        📐 Exportação:
+                      </label>
                       <input
-                        id="des-goal-pieces"
+                        id="des-goal-exportacao"
                         type="number"
                         min="0"
                         className="form-input"
-                        value={formData.dailyGoalPieces}
-                        onChange={(e) => setFormData({ ...formData, dailyGoalPieces: Number(e.target.value) })}
+                        placeholder="Ex: 10"
+                        value={formData.goalExportacao}
+                        onChange={(e) => setFormData({ ...formData, goalExportacao: Number(e.target.value) })}
+                        required
                       />
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>exportações/dia (0 se não fecha)</span>
                     </div>
+
                     <div className="form-group">
-                      <label className="form-label" htmlFor="des-goal-meters">Meta Metros/Dia (Impressão):</label>
+                      <label className="form-label" htmlFor="des-goal-impressao">
+                        🖨️ Impressão:
+                      </label>
                       <input
-                        id="des-goal-meters"
+                        id="des-goal-impressao"
                         type="number"
                         min="0"
                         className="form-input"
-                        value={formData.dailyGoalMeters}
-                        onChange={(e) => setFormData({ ...formData, dailyGoalMeters: Number(e.target.value) })}
+                        placeholder="Ex: 120"
+                        value={formData.goalImpressaoPecas}
+                        onChange={(e) => setFormData({ ...formData, goalImpressaoPecas: Number(e.target.value) })}
+                        required
                       />
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>peças impressas/dia (0 se não imprime)</span>
                     </div>
                   </div>
                 </div>
@@ -252,7 +290,7 @@ export function TeamManagement() {
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary">
-                  {editingId ? 'Salvar Designer' : 'Cadastrar Designer'}
+                  {editingId ? 'Salvar Alterações' : 'Cadastrar Designer'}
                 </button>
               </div>
             </form>
@@ -264,7 +302,7 @@ export function TeamManagement() {
       <div 
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
           gap: '16px'
         }}
       >
@@ -282,8 +320,8 @@ export function TeamManagement() {
             <h3 style={{ fontSize: '1rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '6px' }}>
               Nenhum designer cadastrado ainda
             </h3>
-            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', maxWidth: '400px', margin: '0 auto 16px' }}>
-              Cadastre os membros da sua equipe para definir metas diárias e calcular a média de produção em Criação, Exportação e Impressão.
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', maxWidth: '420px', margin: '0 auto 16px' }}>
+              Cadastre os membros da sua equipe para definir metas personalizadas de artes, exportações e peças impressas.
             </p>
             <button className="btn btn-primary btn-sm" onClick={handleOpenNew}>
               <UserPlus size={14} />
@@ -352,7 +390,7 @@ export function TeamManagement() {
                   </div>
                 </div>
 
-                {/* Métricas Recentes deste Designer */}
+                {/* Médias Diárias Reais por Categoria */}
                 <div 
                   style={{
                     background: 'var(--bg-surface)',
@@ -367,50 +405,74 @@ export function TeamManagement() {
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Média Diária</div>
+                    <div style={{ fontSize: '0.68rem', color: '#60a5fa', fontWeight: 600 }}>Criação</div>
                     <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      {stats ? stats.dailyAvgOrders : 0}
+                      {stats ? stats.dailyAvgCriacao : 0}
                     </div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>ped/dia</div>
+                    <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+                      {stats?.rateCriacao !== null ? `${stats.rateCriacao}% meta` : 'artes/dia'}
+                    </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>No Período</div>
+                    <div style={{ fontSize: '0.68rem', color: '#a78bfa', fontWeight: 600 }}>Exportação</div>
                     <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      {stats ? stats.ordersCount : 0}
+                      {stats ? stats.dailyAvgExportacao : 0}
                     </div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>pedidos</div>
+                    <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+                      {stats?.rateExportacao !== null ? `${stats.rateExportacao}% meta` : 'exp/dia'}
+                    </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>Metragem</div>
+                    <div style={{ fontSize: '0.68rem', color: '#34d399', fontWeight: 600 }}>Impressão</div>
                     <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                      {stats ? stats.metersCount : 0}m
+                      {stats ? stats.dailyAvgImpressaoPieces : 0}
                     </div>
-                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>linear</div>
+                    <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+                      {stats?.rateImpressao !== null ? `${stats.rateImpressao}% meta` : 'peças/dia'}
+                    </div>
                   </div>
                 </div>
 
-                {/* Metas Diárias Cadastradas */}
+                {/* Metas Personalizadas Cadastradas */}
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <Target size={13} color="var(--text-muted)" /> Meta Pedidos:
+                      <PenTool size={12} color="#60a5fa" /> Meta Criação:
                     </span>
-                    <strong style={{ color: 'var(--text-primary)' }}>{designer.dailyGoalOrders} / dia</strong>
+                    {Number(designer.goalCriacaoArtes) > 0 ? (
+                      <strong style={{ color: 'var(--text-primary)' }}>
+                        {designer.goalCriacaoArtes} artes/dia
+                      </strong>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>— (Não se aplica)</span>
+                    )}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
                     <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                      <Shirt size={13} color="var(--text-muted)" /> Meta Peças:
+                      <Layers size={12} color="#a78bfa" /> Meta Exportação:
                     </span>
-                    <strong style={{ color: 'var(--text-primary)' }}>{designer.dailyGoalPieces || 0} peças/dia</strong>
+                    {Number(designer.goalExportacao) > 0 ? (
+                      <strong style={{ color: 'var(--text-primary)' }}>
+                        {designer.goalExportacao} exp/dia
+                      </strong>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>— (Não se aplica)</span>
+                    )}
                   </div>
-                  {designer.dailyGoalMeters > 0 && (
-                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                      <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                        <Ruler size={13} color="var(--text-muted)" /> Meta Impressão:
-                      </span>
-                      <strong style={{ color: 'var(--text-primary)' }}>{designer.dailyGoalMeters}m / dia</strong>
-                    </div>
-                  )}
+
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <Printer size={12} color="#34d399" /> Meta Impressão:
+                    </span>
+                    {Number(designer.goalImpressaoPecas) > 0 ? (
+                      <strong style={{ color: 'var(--text-primary)' }}>
+                        {designer.goalImpressaoPecas} peças/dia
+                      </strong>
+                    ) : (
+                      <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>— (Não se aplica)</span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -426,9 +488,9 @@ export function TeamManagement() {
                   fontSize: '0.75rem'
                 }}
               >
-                <span style={{ color: 'var(--text-muted)' }}>Status:</span>
+                <span style={{ color: 'var(--text-muted)' }}>Desempenho Geral:</span>
                 <span style={{ fontWeight: 600, color: stats?.performanceStatus === 'Superando' ? 'var(--accent-emerald)' : stats?.performanceStatus === 'Na Meta' ? 'var(--text-primary)' : 'var(--accent-amber)' }}>
-                  {stats?.performanceStatus || 'Ativo'}
+                  {stats?.performanceStatus || 'Ativo'} ({stats ? stats.goalAchievementRate : 100}%)
                 </span>
               </div>
             </div>

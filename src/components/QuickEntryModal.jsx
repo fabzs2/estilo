@@ -244,26 +244,39 @@ export function QuickEntryModal() {
               </div>
             </div>
 
-            {/* 4. Peças, Metros e Tipo */}
+            {/* 4. Métrica Principal por Categoria e Tipo */}
             <div className="form-grid-3">
               <div className="form-group">
                 <label className="form-label" htmlFor="entry-pieces">
-                  Quantidade de Peças:
+                  {formData.stage === 'criacao' && '🎨 Quantidade de Artes:'}
+                  {formData.stage === 'exportacao' && '📐 Quantidade de Exportações:'}
+                  {formData.stage === 'impressao' && '🖨️ Peças Impressas (Meta):'}
                 </label>
                 <input
                   id="entry-pieces"
                   type="number"
                   min="0"
                   className="form-input"
-                  placeholder="Ex: 50"
+                  placeholder={
+                    formData.stage === 'criacao' 
+                      ? 'Ex: 1 (padrão 1 arte)' 
+                      : formData.stage === 'exportacao'
+                      ? 'Ex: 1 (padrão 1 exp)'
+                      : 'Ex: 120 peças'
+                  }
                   value={formData.piecesCount}
                   onChange={(e) => setFormData({ ...formData, piecesCount: e.target.value })}
                 />
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {formData.stage === 'criacao' && 'Conta para a meta de artes diárias'}
+                  {formData.stage === 'exportacao' && 'Conta para a meta de exportações diárias'}
+                  {formData.stage === 'impressao' && 'Conta para a meta de peças impressas'}
+                </span>
               </div>
 
               <div className="form-group">
                 <label className="form-label" htmlFor="entry-meters">
-                  Metros Lineares (m):
+                  {formData.stage === 'impressao' ? 'Metros Lineares (Plotter):' : 'Metros Lineares (Opcional):'}
                 </label>
                 <input
                   id="entry-meters"
@@ -271,10 +284,13 @@ export function QuickEntryModal() {
                   step="0.1"
                   min="0"
                   className="form-input"
-                  placeholder={formData.stage === 'criacao' ? '0' : 'Ex: 45.5'}
+                  placeholder={formData.stage === 'impressao' ? 'Ex: 45.5' : '0'}
                   value={formData.meters}
                   onChange={(e) => setFormData({ ...formData, meters: e.target.value })}
                 />
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  {formData.stage === 'impressao' ? 'Extensão linear de papel/filme' : 'Opcional'}
+                </span>
               </div>
 
               <div className="form-group">
@@ -293,6 +309,9 @@ export function QuickEntryModal() {
                     </option>
                   ))}
                 </select>
+                <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
+                  Processo têxtil
+                </span>
               </div>
             </div>
 
