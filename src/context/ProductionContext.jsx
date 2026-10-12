@@ -335,6 +335,55 @@ export function ProductionProvider({ children }) {
     }
   };
 
+  // Enviar dados locais para o Supabase (para migrar dados criados no PC local)
+  const syncLocalToSupabase = async () => {
+    if (!isSupabaseActive || !supabase) {
+      alert('Conecte o Supabase primeiro nas configurações.');
+      return;
+    }
+    try {
+      setIsLoadingDB(true);
+      if (designers.length > 0) {
+        const { error: desErr } = await supabase.from('designers').upsert(designers.map(mapDesignerToDB));
+        if (desErr) throw desErr;
+      }
+      if (entries.length > 0) {
+        const { error: entErr } = await supabase.from('production_entries').upsert(entries.map(mapEntryToDB));
+        if (entErr) throw entErr;
+      }
+      alert(`✅ Sincronização concluída com sucesso!\n\n${designers.length} designer(s) e ${entries.length} pedido(s) foram enviados para o Supabase na nuvem e agora estarão visíveis de qualquer PC ou celular.`);
+    } catch (err) {
+      console.error('Erro ao sincronizar com Supabase:', err);
+      if (err.code === '42P01' || err.message?.includes('does not exist')) {
+        alert('Atenção: A tabela no Supabase ainda não foi criada. Execute o script SQL no SQL Editor do Supabase primeiro.');
+      } else {
+        alert(`Erro na sincronização: ${err.message}`);
+      }
+    } finally {
+      setIsLoadingDB(false);
+    }
+  };
+
+  // Recarregar dados mais recentes do Supabase
+  const refreshFromSupabase = async () => {
+    if (!isSupabaseActive || !supabase) return;
+    setIsLoadingDB(true);
+    try {
+      const { data: dbDes, error: desErr } = await supabase.from('designers').select('*').order('name');
+      if (!desErr && dbDes) {
+        setDesigners(dbDes.map(mapDesignerFromDB));
+      }
+      const { data: dbEnt, error: entErr } = await supabase.from('production_entries').select('*').order('date', { ascending: false });
+      if (!entErr && dbEnt) {
+        setEntries(dbEnt.map(mapEntryFromDB));
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsLoadingDB(false);
+    }
+  };
+
   // Determinar limites de data para o período atual
   const dateBounds = useMemo(() => {
     const now = new Date();
@@ -697,6 +746,8 @@ export function ProductionProvider({ children }) {
         resetSectorGoals,
         isSupabaseActive,
         isLoadingDB,
+        syncLocalToSupabase,
+        refreshFromSupabase,
         editingEntry,
         setEditingEntry
       }}

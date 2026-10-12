@@ -17,11 +17,19 @@ import {
   ShieldCheck,
   Server,
   AlertCircle,
-  Loader2
+  Loader2,
+  UploadCloud,
+  RefreshCw
 } from 'lucide-react';
 
 export function SupabaseModal({ isOpen, onClose }) {
-  const { isSupabaseActive } = useProduction();
+  const { 
+    isSupabaseActive, 
+    designers, 
+    entries, 
+    syncLocalToSupabase, 
+    refreshFromSupabase 
+  } = useProduction();
   const [url, setUrl] = useState(() => localStorage.getItem('designflow_supabase_url') || import.meta.env.VITE_SUPABASE_URL || '');
   const [key, setKey] = useState(() => localStorage.getItem('designflow_supabase_anon_key') || import.meta.env.VITE_SUPABASE_ANON_KEY || '');
   const [copied, setCopied] = useState(false);
@@ -299,6 +307,63 @@ CREATE POLICY "Permitir exclusão pública de pedidos" ON production_entries FOR
                 {testStatus.message}
               </div>
             )}
+
+            {/* Sincronização de Dados para Multi-Dispositivos */}
+            {isSupabaseActive && (
+              <div 
+                style={{
+                  marginTop: '14px',
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '12px 14px'
+                }}
+              >
+                <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
+                  Acesso de Qualquer PC & Sincronização
+                </div>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                  Se você cadastrou designers ou pedidos neste PC enquanto estava offline, envie-os para a nuvem para que apareçam em qualquer outro dispositivo:
+                </p>
+
+                <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                  <button
+                    type="button"
+                    className="btn btn-primary btn-sm"
+                    onClick={syncLocalToSupabase}
+                  >
+                    <UploadCloud size={13} />
+                    Enviar Dados Deste PC ({designers.length} designers, {entries.length} pedidos)
+                  </button>
+
+                  <button
+                    type="button"
+                    className="btn btn-secondary btn-sm"
+                    onClick={refreshFromSupabase}
+                  >
+                    <RefreshCw size={13} />
+                    Recarregar da Nuvem
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Dica para Vercel / Outros Computadores */}
+            <div 
+              style={{
+                marginTop: '14px',
+                padding: '10px 12px',
+                borderRadius: 'var(--radius-md)',
+                background: 'rgba(59, 130, 246, 0.05)',
+                border: '1px solid rgba(59, 130, 246, 0.2)',
+                fontSize: '0.74rem',
+                color: 'var(--text-secondary)',
+                lineHeight: '1.45'
+              }}
+            >
+              💡 <strong>Como acessar de qualquer PC automaticamente?</strong><br />
+              Para que qualquer pessoa ou PC acerte o banco na nuvem direto (sem precisar colar chaves manualmente), configure as variáveis <code>VITE_SUPABASE_URL</code> e <code>VITE_SUPABASE_ANON_KEY</code> nas configurações da <strong>Vercel (Settings &gt; Environment Variables)</strong>.
+            </div>
 
             {/* Script SQL para copiar */}
             <div 
