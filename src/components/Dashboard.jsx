@@ -17,31 +17,8 @@ import {
   RefreshCw
 } from 'lucide-react';
 
-import {
-  Chart as ChartJS,
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  ArcElement,
-  PointElement,
-  LineElement
-} from 'chart.js';
+import 'chart.js/auto';
 import { Bar, Doughnut } from 'react-chartjs-2';
-
-ChartJS.register(
-  CategoryScale,
-  LinearScale,
-  BarElement,
-  Title,
-  Tooltip,
-  Legend,
-  ArcElement,
-  PointElement,
-  LineElement
-);
 
 export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
   const { 
@@ -204,24 +181,25 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
   };
 
   // Dados para o Gráfico de Barras: Produção por Designer & Etapas
+  const designerStatsList = metrics.designerStats || [];
   const barChartData = {
-    labels: metrics.designerStats.map((d) => d.nickname || d.name),
+    labels: designerStatsList.map((d) => d.nickname || d.name),
     datasets: [
       {
         label: 'Criação (Artes)',
-        data: metrics.designerStats.map((d) => d.criacaoCount),
+        data: designerStatsList.map((d) => d.criacaoCount),
         backgroundColor: '#60a5fa',
         borderRadius: 3
       },
       {
         label: 'Exportação (Fechamentos)',
-        data: metrics.designerStats.map((d) => d.exportacaoCount),
+        data: designerStatsList.map((d) => d.exportacaoCount),
         backgroundColor: '#a78bfa',
         borderRadius: 3
       },
       {
         label: 'Impressão (Peças)',
-        data: metrics.designerStats.map((d) => d.impressaoPieces),
+        data: designerStatsList.map((d) => d.impressaoPieces),
         backgroundColor: '#34d399',
         borderRadius: 3
       }
@@ -234,9 +212,9 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
     datasets: [
       {
         data: [
-          metrics.stageCounts.criacao,
-          metrics.stageCounts.exportacao,
-          metrics.stageCounts.impressao
+          metrics.stageCounts?.criacao || 0,
+          metrics.stageCounts?.exportacao || 0,
+          metrics.stageCounts?.impressao || 0
         ],
         backgroundColor: ['#60a5fa', '#a78bfa', '#34d399'],
         borderColor: '#141820',
