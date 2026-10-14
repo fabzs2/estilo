@@ -90,6 +90,7 @@ export const mapEntryFromDB = (row) => ({
   piecesCount: Number(row.pieces_count) || 0,
   meters: Number(row.meters) || 0,
   orderType: row.order_type || 'sublimacao_total',
+  workType: row.work_type || 'arte_nova',
   complexity: row.complexity || 'media',
   notes: row.notes || '',
   createdAt: row.created_at
@@ -106,6 +107,7 @@ export const mapEntryToDB = (e) => ({
   pieces_count: Number(e.piecesCount) || 0,
   meters: Number(e.meters) || 0,
   order_type: e.orderType || 'sublimacao_total',
+  work_type: e.workType || 'arte_nova',
   complexity: e.complexity || 'media',
   notes: e.notes || null
 });

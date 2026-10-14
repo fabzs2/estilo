@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { INITIAL_DESIGNERS, INITIAL_ENTRIES, STAGES } from '../constants/initialData';
+import { INITIAL_DESIGNERS, INITIAL_ENTRIES, STAGES, WORK_TYPES } from '../constants/initialData';
 import { 
   supabase, 
   isSupabaseConfigured, 
@@ -109,6 +109,7 @@ export function ProductionProvider({ children }) {
   // Filtro secundário na tabela/visualizações
   const [selectedStageFilter, setSelectedStageFilter] = useState('all');
   const [selectedDesignerFilter, setSelectedDesignerFilter] = useState('all');
+  const [selectedWorkTypeFilter, setSelectedWorkTypeFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
 
   // Modais
@@ -119,6 +120,20 @@ export function ProductionProvider({ children }) {
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
   const [isSectorGoalsModalOpen, setIsSectorGoalsModalOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState(null);
+  const [advanceStageData, setAdvanceStageData] = useState(null);
+
+  const openAdvanceStage = (entry, targetStage) => {
+    setAdvanceStageData({
+      orderNumber: entry.orderNumber,
+      clientName: entry.clientName,
+      orderType: entry.orderType || 'sublimacao_total',
+      totalPieces: entry.piecesCount || '',
+      notes: entry.notes || '',
+      targetStage: targetStage // 'exportacao' | 'impressao'
+    });
+    setEditingEntry(null);
+    setIsQuickEntryOpen(true);
+  };
 
   // Metas Globais do Setor (Personalizadas por Categoria ou calculadas pela equipe)
   const [sectorGoals, setSectorGoals] = useState(() => {
@@ -151,6 +166,7 @@ export function ProductionProvider({ children }) {
       ...newEntry,
       id: `ent_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
       designerName: designer ? designer.name : 'Designer',
+      workType: newEntry.workType || 'arte_nova',
       piecesCount: Number(newEntry.piecesCount) || 0,
       meters: Number(newEntry.meters) || 0,
       createdAt: new Date().toISOString()
@@ -227,6 +243,7 @@ export function ProductionProvider({ children }) {
         ...item,
         id: `ent_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
         designerName: designer ? designer.name : 'Designer',
+        workType: item.workType || 'arte_nova',
         piecesCount: Number(item.piecesCount) || 0,
         meters: Number(item.meters) || 0,
         createdAt: new Date().toISOString()
@@ -435,6 +452,7 @@ export function ProductionProvider({ children }) {
     return periodEntries.filter((item) => {
       if (selectedStageFilter !== 'all' && item.stage !== selectedStageFilter) return false;
       if (selectedDesignerFilter !== 'all' && item.designerId !== selectedDesignerFilter) return false;
+      if (selectedWorkTypeFilter !== 'all' && (item.workType || 'arte_nova') !== selectedWorkTypeFilter) return false;
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase();
         const matchNumber = item.orderNumber?.toLowerCase().includes(term);
@@ -445,7 +463,7 @@ export function ProductionProvider({ children }) {
       }
       return true;
     });
-  }, [periodEntries, selectedStageFilter, selectedDesignerFilter, searchTerm]);
+  }, [periodEntries, selectedStageFilter, selectedDesignerFilter, selectedWorkTypeFilter, searchTerm]);
 
   // Cálculos de Métricas & Médias do Setor por Categoria
   const metrics = useMemo(() => {
@@ -603,10 +621,121 @@ export function ProductionProvider({ children }) {
       };
     });
 
-    const rankedDesigners = [...designerStats].sort((a, b) => {
-      // Ordena por desempenho geral e depois pedidos
-      return b.goalAchievementRate - a.goalAchievementRate || b.ordersCount - a.ordersCount;
+    // 1. Cálculo de Lead Time / Tempo de Ciclo entre etapas (da Criação à Impressão)
+    const orderGroups = new Map();
+    entries.forEach((e) => {
+      if (!e.orderNumber) return;
+      const key = e.orderNumber.trim().toLowerCase();
+      if (!orderGroups.has(key)) {
+        orderGroups.set(key, []);
+      }
+      orderGroups.get(key).push(e);
     });
+
+    const leadTimeDiffs = [];
+    const criacaoToExportDiffs = [];
+    let completedCyclesCount = 0;
+
+    orderGroups.forEach((groupEntries) => {
+      const criacaoEntry = groupEntries.find((e) => e.stage === 'criacao' && e.date);
+      const exportacaoEntry = groupEntries.find((e) => e.stage === 'exportacao' && e.date);
+      const impressaoEntry = groupEntries.find((e) => e.stage === 'impressao' && e.date);
+
+      if (criacaoEntry && impressaoEntry) {
+        const dCriacao = new Date(criacaoEntry.date + 'T12:00:00');
+        const dImpressao = new Date(impressaoEntry.date + 'T12:00:00');
+        const diffDays = Math.max(0, Math.round((dImpressao - dCriacao) / (1000 * 60 * 60 * 24)));
+        leadTimeDiffs.push(diffDays);
+        completedCyclesCount++;
+      }
+
+      if (criacaoEntry && exportacaoEntry) {
+        const dCriacao = new Date(criacaoEntry.date + 'T12:00:00');
+        const dExportacao = new Date(exportacaoEntry.date + 'T12:00:00');
+        const diffDays = Math.max(0, Math.round((dExportacao - dCriacao) / (1000 * 60 * 60 * 24)));
+        criacaoToExportDiffs.push(diffDays);
+      }
+    });
+
+    const avgLeadTimeDays = leadTimeDiffs.length > 0
+      ? Number((leadTimeDiffs.reduce((a, b) => a + b, 0) / leadTimeDiffs.length).toFixed(1))
+      : null;
+
+    const avgDaysToExport = criacaoToExportDiffs.length > 0
+      ? Number((criacaoToExportDiffs.reduce((a, b) => a + b, 0) / criacaoToExportDiffs.length).toFixed(1))
+      : null;
+
+    const leadTimeStats = {
+      avgLeadTimeDays,
+      avgDaysToExport,
+      completedCyclesCount,
+      totalTrackedOrders: orderGroups.size
+    };
+
+    // 2. Linha do Tempo Diária (Evolução por dia de cada etapa no período)
+    const timelineMap = new Map();
+    const startDate = new Date(dateBounds.start + 'T12:00:00');
+    const endDate = new Date(dateBounds.end + 'T12:00:00');
+    const diffTime = endDate - startDate;
+    const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays >= 0 && diffDays <= 45 && dateBounds.start !== '1970-01-01') {
+      const cur = new Date(startDate);
+      while (cur <= endDate) {
+        const dStr = cur.toISOString().split('T')[0];
+        timelineMap.set(dStr, { criacao: 0, exportacao: 0, impressao: 0 });
+        cur.setDate(cur.getDate() + 1);
+      }
+    }
+
+    periodEntries.forEach((entry) => {
+      if (!entry.date) return;
+      if (!timelineMap.has(entry.date)) {
+        timelineMap.set(entry.date, { criacao: 0, exportacao: 0, impressao: 0 });
+      }
+      const dayData = timelineMap.get(entry.date);
+      if (entry.stage === 'criacao') {
+        dayData.criacao += Number(entry.piecesCount) > 0 ? Number(entry.piecesCount) : 1;
+      } else if (entry.stage === 'exportacao') {
+        dayData.exportacao += Number(entry.piecesCount) > 0 ? Number(entry.piecesCount) : 1;
+      } else if (entry.stage === 'impressao') {
+        dayData.impressao += Number(entry.piecesCount) || 0;
+      }
+    });
+
+    const sortedDates = Array.from(timelineMap.keys()).sort();
+    const displayDates = sortedDates.length > 31 ? sortedDates.slice(-20) : sortedDates;
+
+    const dailyTimeline = {
+      labels: displayDates.map((dStr) => {
+        const parts = dStr.split('-');
+        if (parts.length === 3) {
+          const dObj = new Date(dStr + 'T12:00:00');
+          const dayName = dObj.toLocaleDateString('pt-BR', { weekday: 'short' }).replace('.', '');
+          return `${parts[2]}/${parts[1]} (${dayName})`;
+        }
+        return dStr;
+      }),
+      criacao: displayDates.map((d) => timelineMap.get(d)?.criacao || 0),
+      exportacao: displayDates.map((d) => timelineMap.get(d)?.exportacao || 0),
+      impressao: displayDates.map((d) => timelineMap.get(d)?.impressao || 0),
+      dates: displayDates
+    };
+
+    // 3. Contagem de Tipos de Lançamento (Arte Nova vs Ajuste/Refação vs Reposição)
+    const countArteNova = periodEntries.filter((e) => (e.workType || 'arte_nova') === 'arte_nova').length;
+    const countAjuste = periodEntries.filter((e) => e.workType === 'ajuste_refacao').length;
+    const countReposicao = periodEntries.filter((e) => e.workType === 'reposicao').length;
+    const reworkCount = countAjuste + countReposicao;
+    const reworkRate = totalOrders > 0 ? Math.round((reworkCount / totalOrders) * 100) : 0;
+
+    const reworkStats = {
+      arteNova: countArteNova,
+      ajusteRefacao: countAjuste,
+      reposicao: countReposicao,
+      reworkCount,
+      reworkRate
+    };
 
     return {
       totalOrders,
@@ -629,9 +758,12 @@ export function ProductionProvider({ children }) {
         impressao: periodEntries.filter((e) => e.stage === 'impressao').length
       },
       designerStats,
-      rankedDesigners
+      rankedDesigners,
+      leadTimeStats,
+      dailyTimeline,
+      reworkStats
     };
-  }, [periodEntries, designers, dateBounds, sectorGoals]);
+  }, [periodEntries, entries, designers, dateBounds, sectorGoals]);
 
   const exportToCSV = () => {
     if (!filteredEntries.length) {
@@ -639,7 +771,7 @@ export function ProductionProvider({ children }) {
       return;
     }
 
-    const headers = ['ID', 'Data', 'Pedido', 'Cliente', 'Designer', 'Etapa', 'Peças', 'Metros (m)', 'Tipo de Pedido', 'Complexidade', 'Observações'];
+    const headers = ['ID', 'Data', 'Pedido', 'Cliente', 'Designer', 'Etapa', 'Tipo de Lançamento', 'Peças', 'Metros (m)', 'Tipo de Pedido', 'Complexidade', 'Observações'];
     const rows = filteredEntries.map((e) => [
       e.id,
       e.date,
@@ -647,6 +779,7 @@ export function ProductionProvider({ children }) {
       `"${(e.clientName || '').replace(/"/g, '""')}"`,
       `"${e.designerName || ''}"`,
       STAGES[e.stage]?.name || e.stage,
+      WORK_TYPES[e.workType]?.name || 'Arte Nova',
       e.piecesCount || 0,
       e.meters || 0,
       e.orderType || '',
@@ -749,7 +882,12 @@ export function ProductionProvider({ children }) {
         syncLocalToSupabase,
         refreshFromSupabase,
         editingEntry,
-        setEditingEntry
+        setEditingEntry,
+        advanceStageData,
+        setAdvanceStageData,
+        openAdvanceStage,
+        selectedWorkTypeFilter,
+        setSelectedWorkTypeFilter
       }}
     >
       {children}

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useProduction } from '../context/ProductionContext';
-import { ORDER_TYPES } from '../constants/initialData';
+import { ORDER_TYPES, WORK_TYPES } from '../constants/initialData';
 import { 
   X, 
   Save, 
@@ -10,7 +10,10 @@ import {
   FileText, 
   PenTool, 
   Check, 
-  Users 
+  Users,
+  Calendar,
+  ArrowRight,
+  Tag
 } from 'lucide-react';
 
 export function QuickEntryModal() {
@@ -22,37 +25,50 @@ export function QuickEntryModal() {
     addBatchEntries, 
     updateEntry, 
     editingEntry, 
-    setEditingEntry 
+    setEditingEntry,
+    advanceStageData,
+    setAdvanceStageData
   } = useProduction();
+
+  const getTodayStr = () => new Date().toISOString().split('T')[0];
+  const getYesterdayStr = () => {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split('T')[0];
+  };
 
   // Dados Gerais do Pedido
   const [generalData, setGeneralData] = useState({
     orderNumber: '',
     clientName: '',
-    date: new Date().toISOString().split('T')[0],
+    date: getTodayStr(),
     orderType: 'sublimacao_total',
+    workType: 'arte_nova',
     totalPieces: '',
     notes: ''
   });
 
-  // Etapas Individuais com seleção de responsável para cada parte
+  // Etapas Individuais com seleção de responsável e data própria para cada parte
   const [stageCriacao, setStageCriacao] = useState({
     enabled: true,
     designerId: '',
-    artesCount: 1
+    artesCount: 1,
+    date: getTodayStr()
   });
 
   const [stageExportacao, setStageExportacao] = useState({
     enabled: true,
     designerId: '',
-    exportacoesCount: 1
+    exportacoesCount: 1,
+    date: getTodayStr()
   });
 
   const [stageImpressao, setStageImpressao] = useState({
     enabled: true,
     designerId: '',
     piecesCount: '',
-    meters: ''
+    meters: '',
+    date: getTodayStr()
   });
 
   // Estado caso esteja em modo de edição de um único lançamento existente
@@ -61,10 +77,11 @@ export function QuickEntryModal() {
     clientName: '',
     designerId: '',
     stage: 'criacao',
-    date: new Date().toISOString().split('T')[0],
+    date: getTodayStr(),
     piecesCount: '',
     meters: '',
     orderType: 'sublimacao_total',
+    workType: 'arte_nova',
     notes: ''
   });
 
@@ -81,23 +98,51 @@ export function QuickEntryModal() {
         clientName: editingEntry.clientName || '',
         designerId: editingEntry.designerId || (designers[0]?.id || ''),
         stage: editingEntry.stage || 'criacao',
-        date: editingEntry.date || new Date().toISOString().split('T')[0],
+        date: editingEntry.date || getTodayStr(),
         piecesCount: editingEntry.piecesCount || '',
         meters: editingEntry.meters || '',
         orderType: editingEntry.orderType || 'sublimacao_total',
+        workType: editingEntry.workType || 'arte_nova',
         notes: editingEntry.notes || ''
       });
+    } else if (advanceStageData) {
+      // Modo Avançar Etapa de um pedido existente
+      const exportacaoDefault = designers.find((d) => (d.role || '').toLowerCase().includes('export') || (d.role || '').toLowerCase().includes('fechamento'))?.id || designers[0]?.id || '';
+      const impressaoDefault = designers.find((d) => (d.role || '').toLowerCase().includes('impress') || (d.role || '').toLowerCase().includes('rip'))?.id || designers[0]?.id || '';
+
+      setGeneralData({
+        orderNumber: advanceStageData.orderNumber || '',
+        clientName: advanceStageData.clientName || '',
+        date: getTodayStr(),
+        orderType: advanceStageData.orderType || 'sublimacao_total',
+        workType: advanceStageData.workType || 'arte_nova',
+        totalPieces: advanceStageData.totalPieces || '',
+        notes: advanceStageData.notes || ''
+      });
+
+      if (advanceStageData.targetStage === 'exportacao') {
+        setStageCriacao({ enabled: false, designerId: '', artesCount: 1, date: getTodayStr() });
+        setStageExportacao({ enabled: true, designerId: exportacaoDefault, exportacoesCount: 1, date: getTodayStr() });
+        setStageImpressao({ enabled: false, designerId: impressaoDefault, piecesCount: advanceStageData.totalPieces || '', meters: '', date: getTodayStr() });
+      } else if (advanceStageData.targetStage === 'impressao') {
+        setStageCriacao({ enabled: false, designerId: '', artesCount: 1, date: getTodayStr() });
+        setStageExportacao({ enabled: false, designerId: '', exportacoesCount: 1, date: getTodayStr() });
+        setStageImpressao({ enabled: true, designerId: impressaoDefault, piecesCount: advanceStageData.totalPieces || '', meters: '', date: getTodayStr() });
+      }
     } else {
       // Novo pedido unificado: encontra os melhores designers padrão por especialidade
       const criacaoDefault = designers.find((d) => (d.role || '').toLowerCase().includes('cria'))?.id || designers[0]?.id || '';
       const exportacaoDefault = designers.find((d) => (d.role || '').toLowerCase().includes('export') || (d.role || '').toLowerCase().includes('fechamento'))?.id || designers[1]?.id || designers[0]?.id || '';
       const impressaoDefault = designers.find((d) => (d.role || '').toLowerCase().includes('impress') || (d.role || '').toLowerCase().includes('rip'))?.id || designers[2]?.id || designers[0]?.id || '';
 
+      const today = getTodayStr();
+
       setGeneralData({
         orderNumber: `PED-${Math.floor(1000 + Math.random() * 9000)}`,
         clientName: '',
-        date: new Date().toISOString().split('T')[0],
+        date: today,
         orderType: 'sublimacao_total',
+        workType: 'arte_nova',
         totalPieces: '',
         notes: ''
       });
@@ -105,29 +150,33 @@ export function QuickEntryModal() {
       setStageCriacao({
         enabled: true,
         designerId: criacaoDefault,
-        artesCount: 1
+        artesCount: 1,
+        date: today
       });
 
       setStageExportacao({
         enabled: true,
         designerId: exportacaoDefault,
-        exportacoesCount: 1
+        exportacoesCount: 1,
+        date: today
       });
 
       setStageImpressao({
         enabled: true,
         designerId: impressaoDefault,
         piecesCount: '',
-        meters: ''
+        meters: '',
+        date: today
       });
     }
-  }, [editingEntry, isQuickEntryOpen, designers]);
+  }, [editingEntry, advanceStageData, isQuickEntryOpen, designers]);
 
   if (!isQuickEntryOpen) return null;
 
   const handleClose = () => {
     setIsQuickEntryOpen(false);
     setEditingEntry(null);
+    if (setAdvanceStageData) setAdvanceStageData(null);
   };
 
   // Quando o usuário preenche a quantidade geral de peças do pedido, sugere na Impressão
@@ -142,6 +191,14 @@ export function QuickEntryModal() {
     setStageCriacao((prev) => ({ ...prev, designerId }));
     setStageExportacao((prev) => ({ ...prev, designerId }));
     setStageImpressao((prev) => ({ ...prev, designerId }));
+  };
+
+  // Atalho para replicar a data da arte nas etapas de exportação e impressão
+  const handleCopyDateFromCriacao = () => {
+    if (stageCriacao.date) {
+      setStageExportacao((prev) => ({ ...prev, date: stageCriacao.date }));
+      setStageImpressao((prev) => ({ ...prev, date: stageCriacao.date }));
+    }
   };
 
   const handleSubmit = (e) => {
@@ -202,8 +259,9 @@ export function QuickEntryModal() {
       entriesToCreate.push({
         orderNumber: generalData.orderNumber,
         clientName: generalData.clientName,
-        date: generalData.date,
+        date: stageCriacao.date || generalData.date,
         orderType: generalData.orderType,
+        workType: generalData.workType || 'arte_nova',
         notes: generalData.notes,
         stage: 'criacao',
         designerId: stageCriacao.designerId,
@@ -217,8 +275,9 @@ export function QuickEntryModal() {
       entriesToCreate.push({
         orderNumber: generalData.orderNumber,
         clientName: generalData.clientName,
-        date: generalData.date,
+        date: stageExportacao.date || generalData.date,
         orderType: generalData.orderType,
+        workType: generalData.workType || 'arte_nova',
         notes: generalData.notes,
         stage: 'exportacao',
         designerId: stageExportacao.designerId,
@@ -232,8 +291,9 @@ export function QuickEntryModal() {
       entriesToCreate.push({
         orderNumber: generalData.orderNumber,
         clientName: generalData.clientName,
-        date: generalData.date,
+        date: stageImpressao.date || generalData.date,
         orderType: generalData.orderType,
+        workType: generalData.workType || 'arte_nova',
         notes: generalData.notes,
         stage: 'impressao',
         designerId: stageImpressao.designerId,
@@ -268,6 +328,11 @@ export function QuickEntryModal() {
               <>
                 <FileText size={17} />
                 Editar Lançamento: {editingEntry.orderNumber}
+              </>
+            ) : advanceStageData ? (
+              <>
+                <ArrowRight size={17} color="#60a5fa" />
+                Avançar Pedido: {advanceStageData.orderNumber} ({advanceStageData.targetStage === 'exportacao' ? 'Lançar Exportação' : 'Lançar Impressão'})
               </>
             ) : (
               <>
@@ -373,6 +438,49 @@ export function QuickEntryModal() {
                       value={singleEditData.meters}
                       onChange={(e) => setSingleEditData({ ...singleEditData, meters: e.target.value })}
                     />
+                  </div>
+                </div>
+
+                {/* Tipo de Lançamento (Arte Nova vs Ajuste/Refação vs Reposição) */}
+                <div className="form-group">
+                  <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Tag size={13} style={{ color: 'var(--accent-primary)' }} />
+                    Tipo de Lançamento:
+                  </label>
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                    {Object.values(WORK_TYPES).map((wt) => {
+                      const isSelected = (singleEditData.workType || 'arte_nova') === wt.id;
+                      return (
+                        <button
+                          key={wt.id}
+                          type="button"
+                          onClick={() => setSingleEditData({ ...singleEditData, workType: wt.id })}
+                          style={{
+                            display: 'flex',
+                            flexDirection: 'column',
+                            alignItems: 'center',
+                            padding: '8px 6px',
+                            borderRadius: 'var(--radius-md)',
+                            border: `1.5px solid ${isSelected ? wt.color : 'var(--border-subtle)'}`,
+                            background: isSelected ? wt.bgLight : 'rgba(255, 255, 255, 0.02)',
+                            color: isSelected ? wt.color : 'var(--text-secondary)',
+                            cursor: 'pointer',
+                            transition: 'all 0.15s ease',
+                            textAlign: 'center'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 600, fontSize: '0.78rem' }}>
+                            <span style={{ width: '7px', height: '7px', borderRadius: '50%', background: wt.color, display: 'inline-block' }} />
+                            {wt.name}
+                          </div>
+                          <span style={{ fontSize: '0.67rem', opacity: 0.75, marginTop: '2px' }}>
+                            {wt.id === 'arte_nova' && 'Do zero'}
+                            {wt.id === 'ajuste_refacao' && 'Ajuste / Cliente'}
+                            {wt.id === 'reposicao' && 'Reposição'}
+                          </span>
+                        </button>
+                      );
+                    })}
                   </div>
                 </div>
 
@@ -486,43 +594,138 @@ export function QuickEntryModal() {
                       </select>
                     </div>
                   </div>
+
+                  {/* Tipo de Lançamento (Arte Nova vs Ajuste/Refação vs Reposição) */}
+                  <div style={{ marginTop: '12px', paddingTop: '12px', borderTop: '1px dashed var(--border-subtle)' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+                      <label className="form-label" style={{ display: 'flex', alignItems: 'center', gap: '6px', margin: 0 }}>
+                        <Tag size={13} style={{ color: 'var(--accent-primary)' }} />
+                        <span>Tipo de Lançamento:</span>
+                      </label>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
+                        Mensuração de novas criações vs refações reprovadas
+                      </span>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px' }}>
+                      {Object.values(WORK_TYPES).map((wt) => {
+                        const isSelected = (generalData.workType || 'arte_nova') === wt.id;
+                        return (
+                          <button
+                            key={wt.id}
+                            type="button"
+                            onClick={() => setGeneralData({ ...generalData, workType: wt.id })}
+                            style={{
+                              display: 'flex',
+                              flexDirection: 'column',
+                              alignItems: 'center',
+                              justifyContent: 'center',
+                              padding: '8px 10px',
+                              borderRadius: 'var(--radius-md)',
+                              border: `1.5px solid ${isSelected ? wt.color : 'var(--border-subtle)'}`,
+                              background: isSelected ? wt.bgLight : 'rgba(255, 255, 255, 0.02)',
+                              color: isSelected ? wt.color : 'var(--text-secondary)',
+                              cursor: 'pointer',
+                              transition: 'all 0.15s ease',
+                              textAlign: 'center'
+                            }}
+                          >
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, fontSize: '0.8125rem' }}>
+                              <span style={{
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                background: wt.color,
+                                display: 'inline-block'
+                              }} />
+                              {wt.name}
+                            </div>
+                            <span style={{ fontSize: '0.6875rem', opacity: 0.75, marginTop: '2px' }}>
+                              {wt.id === 'arte_nova' && 'Arte criada do zero'}
+                              {wt.id === 'ajuste_refacao' && 'Ajuste / Cliente reprovou'}
+                              {wt.id === 'reposicao' && 'Reposição de peças'}
+                            </span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
                 </div>
 
-                {/* 2. Etapas e Designers Responsáveis (Os 3 Blocos) */}
+                {/* Banner de Avanço de Etapa se ativo */}
+                {advanceStageData && (
+                  <div 
+                    style={{
+                      background: 'rgba(59, 130, 246, 0.08)',
+                      border: '1px solid rgba(59, 130, 246, 0.3)',
+                      borderRadius: 'var(--radius-md)',
+                      padding: '10px 14px',
+                      marginBottom: '14px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '10px',
+                      fontSize: '0.78rem',
+                      color: '#93c5fd'
+                    }}
+                  >
+                    <ArrowRight size={16} />
+                    <div>
+                      Avançando pedido <strong>{advanceStageData.orderNumber}</strong> ({advanceStageData.clientName}). 
+                      Registrando etapa de <strong>{advanceStageData.targetStage === 'exportacao' ? 'Exportação / Fechamento' : 'Impressão / Plotter'}</strong>. 
+                      A data desta etapa será computada com precisão no dia correspondente!
+                    </div>
+                  </div>
+                )}
+
+                {/* 2. Etapas e Designers Responsáveis (Os 3 Blocos com Data Própria) */}
                 <div style={{ marginBottom: '16px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
                     <div>
                       <div style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                        2. Responsáveis por Cada Etapa do Pedido
+                        2. Responsáveis & Data de Cada Etapa
                       </div>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                        Selecione quem fez cada parte. Você pode desmarcar etapas que não foram feitas.
+                        Cada etapa possui sua própria data para garantir o gráfico diário exato.
                       </div>
                     </div>
 
-                    {/* Atalho para replicar designer */}
-                    {designers.length > 0 && (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Mesmo designer em tudo:</span>
-                        <select
-                          className="form-select"
-                          style={{ padding: '3px 8px', fontSize: '0.72rem', width: 'auto' }}
-                          onChange={(e) => handleApplySameDesigner(e.target.value)}
-                          defaultValue=""
-                        >
-                          <option value="" disabled>Selecionar...</option>
-                          {designers.map((d) => (
-                            <option key={d.id} value={d.id}>{d.name.split(' ')[0]}</option>
-                          ))}
-                        </select>
-                      </div>
-                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+                      {/* Botão para replicar data da arte */}
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ fontSize: '0.7rem', padding: '3px 8px', height: 'auto' }}
+                        onClick={handleCopyDateFromCriacao}
+                        title="Replicar a data da Criação para a Exportação e Impressão"
+                      >
+                        <Calendar size={12} />
+                        Copiar data da Arte para todas
+                      </button>
+
+                      {/* Atalho para replicar designer */}
+                      {designers.length > 0 && (
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Mesmo designer:</span>
+                          <select
+                            className="form-select"
+                            style={{ padding: '3px 8px', fontSize: '0.72rem', width: 'auto' }}
+                            onChange={(e) => handleApplySameDesigner(e.target.value)}
+                            defaultValue=""
+                          >
+                            <option value="" disabled>Selecionar...</option>
+                            {designers.map((d) => (
+                              <option key={d.id} value={d.id}>{d.name.split(' ')[0]}</option>
+                            ))}
+                          </select>
+                        </div>
+                      )}
+                    </div>
                   </div>
 
                   <div 
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: 'repeat(auto-fit, minmax(230px, 1fr))',
+                      gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))',
                       gap: '12px'
                     }}
                   >
@@ -562,6 +765,42 @@ export function QuickEntryModal() {
                         <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
                           {stageCriacao.enabled ? 'Ativo' : 'Ignorar'}
                         </span>
+                      </div>
+
+                      {/* Data da Arte */}
+                      <div className="form-group" style={{ marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+                          <label className="form-label" style={{ fontSize: '0.72rem', marginBottom: 0 }}>
+                            Data da Arte:
+                          </label>
+                          <div style={{ display: 'flex', gap: '3px' }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: '0 5px', fontSize: '0.65rem', height: '18px', minHeight: 'unset' }}
+                              onClick={() => setStageCriacao((prev) => ({ ...prev, date: getTodayStr() }))}
+                            >
+                              Hoje
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: '0 5px', fontSize: '0.65rem', height: '18px', minHeight: 'unset' }}
+                              onClick={() => setStageCriacao((prev) => ({ ...prev, date: getYesterdayStr() }))}
+                            >
+                              Ontem
+                            </button>
+                          </div>
+                        </div>
+                        <input
+                          type="date"
+                          className="form-input"
+                          style={{ fontSize: '0.78rem' }}
+                          value={stageCriacao.date}
+                          onChange={(e) => setStageCriacao({ ...stageCriacao, date: e.target.value })}
+                          disabled={!stageCriacao.enabled}
+                          required={stageCriacao.enabled}
+                        />
                       </div>
 
                       <div className="form-group" style={{ marginBottom: '8px' }}>
@@ -642,6 +881,42 @@ export function QuickEntryModal() {
                         </span>
                       </div>
 
+                      {/* Data da Exportação */}
+                      <div className="form-group" style={{ marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+                          <label className="form-label" style={{ fontSize: '0.72rem', marginBottom: 0 }}>
+                            Data da Exportação:
+                          </label>
+                          <div style={{ display: 'flex', gap: '3px' }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: '0 5px', fontSize: '0.65rem', height: '18px', minHeight: 'unset' }}
+                              onClick={() => setStageExportacao((prev) => ({ ...prev, date: getTodayStr() }))}
+                            >
+                              Hoje
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: '0 5px', fontSize: '0.65rem', height: '18px', minHeight: 'unset' }}
+                              onClick={() => setStageExportacao((prev) => ({ ...prev, date: getYesterdayStr() }))}
+                            >
+                              Ontem
+                            </button>
+                          </div>
+                        </div>
+                        <input
+                          type="date"
+                          className="form-input"
+                          style={{ fontSize: '0.78rem' }}
+                          value={stageExportacao.date}
+                          onChange={(e) => setStageExportacao({ ...stageExportacao, date: e.target.value })}
+                          disabled={!stageExportacao.enabled}
+                          required={stageExportacao.enabled}
+                        />
+                      </div>
+
                       <div className="form-group" style={{ marginBottom: '8px' }}>
                         <label className="form-label" style={{ fontSize: '0.72rem' }}>
                           Designer da Exportação:
@@ -718,6 +993,42 @@ export function QuickEntryModal() {
                         <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>
                           {stageImpressao.enabled ? 'Ativo' : 'Ignorar'}
                         </span>
+                      </div>
+
+                      {/* Data da Impressão */}
+                      <div className="form-group" style={{ marginBottom: '8px' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '3px' }}>
+                          <label className="form-label" style={{ fontSize: '0.72rem', marginBottom: 0 }}>
+                            Data da Impressão:
+                          </label>
+                          <div style={{ display: 'flex', gap: '3px' }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: '0 5px', fontSize: '0.65rem', height: '18px', minHeight: 'unset' }}
+                              onClick={() => setStageImpressao((prev) => ({ ...prev, date: getTodayStr() }))}
+                            >
+                              Hoje
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: '0 5px', fontSize: '0.65rem', height: '18px', minHeight: 'unset' }}
+                              onClick={() => setStageImpressao((prev) => ({ ...prev, date: getYesterdayStr() }))}
+                            >
+                              Ontem
+                            </button>
+                          </div>
+                        </div>
+                        <input
+                          type="date"
+                          className="form-input"
+                          style={{ fontSize: '0.78rem' }}
+                          value={stageImpressao.date}
+                          onChange={(e) => setStageImpressao({ ...stageImpressao, date: e.target.value })}
+                          disabled={!stageImpressao.enabled}
+                          required={stageImpressao.enabled}
+                        />
                       </div>
 
                       <div className="form-group" style={{ marginBottom: '8px' }}>

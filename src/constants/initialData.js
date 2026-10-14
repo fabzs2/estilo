@@ -36,6 +36,37 @@ export const ORDER_TYPES = [
   { id: 'misto', name: 'Misto / Composto', icon: 'Boxes' }
 ];
 
+// Tipos de Lançamento / Motivo da Produção
+export const WORK_TYPES = {
+  arte_nova: {
+    id: 'arte_nova',
+    name: 'Arte Nova',
+    shortName: 'Nova',
+    color: '#38bdf8', // sky
+    bgLight: 'rgba(56, 189, 248, 0.12)',
+    border: 'rgba(56, 189, 248, 0.35)',
+    description: 'Criação do zero / layout novo para o cliente'
+  },
+  ajuste_refacao: {
+    id: 'ajuste_refacao',
+    name: 'Ajuste / Refação',
+    shortName: 'Ajuste',
+    color: '#fbbf24', // amber
+    bgLight: 'rgba(251, 191, 36, 0.12)',
+    border: 'rgba(251, 191, 36, 0.35)',
+    description: 'Alteração solicitada pelo cliente (cor, patrocinador, layout reprovado)'
+  },
+  reposicao: {
+    id: 'reposicao',
+    name: 'Reposição',
+    shortName: 'Reposição',
+    color: '#f87171', // red/coral
+    bgLight: 'rgba(248, 113, 113, 0.12)',
+    border: 'rgba(248, 113, 113, 0.35)',
+    description: 'Reposição de peças com defeito, corte ou perda na produção'
+  }
+};
+
 // Base zerada para inserção dos designers e histórico reais pelo usuário
 export const INITIAL_DESIGNERS = [];
 export const INITIAL_ENTRIES = [];

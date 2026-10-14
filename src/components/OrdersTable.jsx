@@ -1,6 +1,6 @@
 import React from 'react';
 import { useProduction } from '../context/ProductionContext';
-import { STAGES, ORDER_TYPES } from '../constants/initialData';
+import { STAGES, ORDER_TYPES, WORK_TYPES } from '../constants/initialData';
 import { 
   Search, 
   Download, 
@@ -11,23 +11,30 @@ import {
   Calendar, 
   PenTool, 
   Printer, 
-  Inbox
+  Inbox,
+  Check,
+  ArrowRight,
+  Tag
 } from 'lucide-react';
 
 export function OrdersTable({ onOpenQuickEntry }) {
   const { 
+    entries,
     filteredEntries, 
     designers, 
     selectedStageFilter, 
     setSelectedStageFilter,
     selectedDesignerFilter, 
     setSelectedDesignerFilter,
+    selectedWorkTypeFilter,
+    setSelectedWorkTypeFilter,
     searchTerm, 
     setSearchTerm,
     exportToCSV,
     deleteEntry,
     setEditingEntry,
-    setIsQuickEntryOpen
+    setIsQuickEntryOpen,
+    openAdvanceStage
   } = useProduction();
 
   const handleEdit = (entry) => {
@@ -117,6 +124,20 @@ export function OrdersTable({ onOpenQuickEntry }) {
             <option value="impressao">Impressão / Plotter</option>
           </select>
 
+          {/* Filtro por Tipo de Lançamento */}
+          <select
+            id="filter-work-type-select"
+            className="form-select"
+            style={{ width: 'auto' }}
+            value={selectedWorkTypeFilter}
+            onChange={(e) => setSelectedWorkTypeFilter(e.target.value)}
+          >
+            <option value="all">Todos os Tipos de Arte</option>
+            <option value="arte_nova">✨ Arte Nova</option>
+            <option value="ajuste_refacao">🔄 Ajuste / Refação</option>
+            <option value="reposicao">⚠️ Reposição</option>
+          </select>
+
           {/* Botão Exportar CSV */}
           <button
             id="btn-export-csv"
@@ -166,12 +187,13 @@ export function OrdersTable({ onOpenQuickEntry }) {
             Exibindo <strong style={{ color: 'var(--text-primary)' }}>{filteredEntries.length}</strong> lançamentos no período
           </span>
 
-          {(selectedDesignerFilter !== 'all' || selectedStageFilter !== 'all' || searchTerm) && (
+          {(selectedDesignerFilter !== 'all' || selectedStageFilter !== 'all' || selectedWorkTypeFilter !== 'all' || searchTerm) && (
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => {
                 setSelectedDesignerFilter('all');
                 setSelectedStageFilter('all');
+                setSelectedWorkTypeFilter('all');
                 setSearchTerm('');
               }}
             >
@@ -203,12 +225,13 @@ export function OrdersTable({ onOpenQuickEntry }) {
             <table className="modern-table">
               <thead>
                 <tr>
-                  <th>Data</th>
+                  <th>Data da Etapa</th>
                   <th>Pedido</th>
                   <th>Cliente & Detalhes do Uniforme</th>
                   <th>Etapa</th>
+                  <th style={{ minWidth: '135px' }}>Fluxo / Próxima Etapa</th>
                   <th>Designer Responsável</th>
-                  <th style={{ textAlign: 'center' }}>Produção (Artes / Exp / Peças)</th>
+                  <th style={{ textAlign: 'center' }}>Produção</th>
                   <th>Tipo / Processo</th>
                   <th>Obs</th>
                   <th style={{ textAlign: 'center', width: '80px' }}>Ações</th>
@@ -218,6 +241,12 @@ export function OrdersTable({ onOpenQuickEntry }) {
                 {filteredEntries.map((item) => {
                   const stageInfo = STAGES[item.stage] || STAGES.criacao;
                   const designer = designers.find((d) => d.id === item.designerId);
+
+                  const orderNum = (item.orderNumber || '').trim().toLowerCase();
+                  const orderSiblings = orderNum ? entries.filter((e) => (e.orderNumber || '').trim().toLowerCase() === orderNum) : [item];
+                  const hasCriacao = orderSiblings.some((e) => e.stage === 'criacao');
+                  const hasExportacao = orderSiblings.some((e) => e.stage === 'exportacao');
+                  const hasImpressao = orderSiblings.some((e) => e.stage === 'impressao');
 
                   return (
                     <tr key={item.id}>
@@ -231,20 +260,47 @@ export function OrdersTable({ onOpenQuickEntry }) {
 
                       {/* Pedido */}
                       <td>
-                        <span 
-                          style={{
-                            fontFamily: 'monospace',
-                            fontWeight: 600,
-                            color: 'var(--text-primary)',
-                            background: 'var(--bg-surface)',
-                            padding: '2px 7px',
-                            borderRadius: 'var(--radius-sm)',
-                            border: '1px solid var(--border-subtle)',
-                            fontSize: '0.78rem'
-                          }}
-                        >
-                          {item.orderNumber || 'S/N'}
-                        </span>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
+                          <span 
+                            style={{
+                              fontFamily: 'monospace',
+                              fontWeight: 600,
+                              color: 'var(--text-primary)',
+                              background: 'var(--bg-surface)',
+                              padding: '2px 7px',
+                              borderRadius: 'var(--radius-sm)',
+                              border: '1px solid var(--border-subtle)',
+                              fontSize: '0.78rem'
+                            }}
+                          >
+                            {item.orderNumber || 'S/N'}
+                          </span>
+                          {/* Tag do Tipo de Lançamento */}
+                          {(() => {
+                            const wt = WORK_TYPES[item.workType || 'arte_nova'] || WORK_TYPES.arte_nova;
+                            return (
+                              <span
+                                style={{
+                                  fontSize: '0.64rem',
+                                  fontWeight: 600,
+                                  color: wt.color,
+                                  background: wt.bgLight,
+                                  border: `1px solid ${wt.border}`,
+                                  padding: '1px 5px',
+                                  borderRadius: 'var(--radius-sm)',
+                                  whiteSpace: 'nowrap',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                                title={wt.description}
+                              >
+                                <span style={{ width: '5px', height: '5px', borderRadius: '50%', background: wt.color, display: 'inline-block' }} />
+                                {wt.name}
+                              </span>
+                            );
+                          })()}
+                        </div>
                       </td>
 
                       {/* Cliente e Detalhes */}
@@ -268,6 +324,89 @@ export function OrdersTable({ onOpenQuickEntry }) {
                           {item.stage === 'impressao' && <Printer size={11} />}
                           {stageInfo.shortName}
                         </span>
+                      </td>
+
+                      {/* Fluxo / Próxima Etapa */}
+                      <td>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexWrap: 'wrap' }}>
+                          {hasImpressao ? (
+                            <span 
+                              style={{ 
+                                fontSize: '0.68rem', 
+                                color: '#34d399', 
+                                background: 'rgba(52, 211, 153, 0.1)', 
+                                border: '1px solid rgba(52, 211, 153, 0.25)',
+                                padding: '2px 6px', 
+                                borderRadius: 'var(--radius-sm)',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              title="Pedido já foi impresso na etapa final!"
+                            >
+                              <Check size={11} /> Concluído
+                            </span>
+                          ) : !hasExportacao ? (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ 
+                                padding: '2px 7px', 
+                                fontSize: '0.68rem', 
+                                borderColor: 'rgba(167, 139, 250, 0.4)', 
+                                color: '#c4b5fd',
+                                height: 'auto',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              onClick={() => openAdvanceStage(item, 'exportacao')}
+                              title="Lançar etapa de Exportação para este pedido"
+                            >
+                              <Layers size={11} /> + Exportar
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ 
+                                padding: '2px 7px', 
+                                fontSize: '0.68rem', 
+                                borderColor: 'rgba(52, 211, 153, 0.4)', 
+                                color: '#6ee7b7',
+                                height: 'auto',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              onClick={() => openAdvanceStage(item, 'impressao')}
+                              title="Lançar etapa de Impressão para este pedido"
+                            >
+                              <Printer size={11} /> + Imprimir
+                            </button>
+                          )}
+
+                          {!hasImpressao && !hasExportacao && (
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ 
+                                padding: '2px 7px', 
+                                fontSize: '0.68rem', 
+                                borderColor: 'rgba(52, 211, 153, 0.3)', 
+                                color: '#6ee7b7',
+                                height: 'auto',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px'
+                              }}
+                              onClick={() => openAdvanceStage(item, 'impressao')}
+                              title="Lançar Impressão direta para este pedido"
+                            >
+                              <Printer size={11} /> + Imprimir
+                            </button>
+                          )}
+                        </div>
                       </td>
 
                       {/* Designer */}

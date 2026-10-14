@@ -9,8 +9,12 @@ import {
   Shirt, 
   PlusCircle, 
   ChevronRight,
-  PenTool,
-  Target
+  PenTool, 
+  Target,
+  Clock,
+  Calendar,
+  Tag,
+  RefreshCw
 } from 'lucide-react';
 
 import {
@@ -91,6 +95,110 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
         beginAtZero: true,
         grid: { color: 'rgba(255, 255, 255, 0.03)' },
         ticks: { color: '#64748b', font: { family: 'Plus Jakarta Sans', size: 11 } }
+      }
+    }
+  };
+
+  // Dados para o Gráfico de Evolução Diária (Linha do Tempo por Dia)
+  const dailyChartData = {
+    labels: metrics.dailyTimeline?.labels || [],
+    datasets: [
+      {
+        type: 'line',
+        label: 'Criação (Artes)',
+        data: metrics.dailyTimeline?.criacao || [],
+        borderColor: '#60a5fa',
+        backgroundColor: 'rgba(96, 165, 250, 0.15)',
+        tension: 0.35,
+        fill: false,
+        pointBackgroundColor: '#60a5fa',
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        yAxisID: 'y'
+      },
+      {
+        type: 'line',
+        label: 'Exportação (Fechamentos)',
+        data: metrics.dailyTimeline?.exportacao || [],
+        borderColor: '#a78bfa',
+        backgroundColor: 'rgba(167, 139, 250, 0.15)',
+        tension: 0.35,
+        fill: false,
+        pointBackgroundColor: '#a78bfa',
+        pointRadius: 4,
+        pointHoverRadius: 6,
+        yAxisID: 'y'
+      },
+      {
+        type: 'bar',
+        label: 'Impressão (Peças)',
+        data: metrics.dailyTimeline?.impressao || [],
+        backgroundColor: 'rgba(52, 211, 153, 0.55)',
+        borderColor: '#34d399',
+        borderWidth: 1,
+        borderRadius: 4,
+        yAxisID: 'y1'
+      }
+    ]
+  };
+
+  const dailyChartOptions = {
+    responsive: true,
+    maintainAspectRatio: false,
+    interaction: {
+      mode: 'index',
+      intersect: false
+    },
+    plugins: {
+      legend: {
+        position: 'top',
+        labels: {
+          color: '#94a3b8',
+          font: { family: 'Plus Jakarta Sans', size: 11, weight: '500' },
+          boxWidth: 12,
+          padding: 14
+        }
+      },
+      tooltip: {
+        backgroundColor: '#1a202c',
+        titleColor: '#f8fafc',
+        bodyColor: '#cbd5e1',
+        borderColor: '#2e3748',
+        borderWidth: 1,
+        padding: 10,
+        usePointStyle: true
+      }
+    },
+    scales: {
+      x: {
+        grid: { color: 'rgba(255, 255, 255, 0.03)' },
+        ticks: { color: '#64748b', font: { family: 'Plus Jakarta Sans', size: 10 } }
+      },
+      y: {
+        type: 'linear',
+        display: true,
+        position: 'left',
+        title: {
+          display: true,
+          text: 'Artes / Exp',
+          color: '#64748b',
+          font: { size: 10 }
+        },
+        grid: { color: 'rgba(255, 255, 255, 0.03)' },
+        ticks: { color: '#64748b', beginAtZero: true, stepSize: 1 }
+      },
+      y1: {
+        type: 'linear',
+        display: true,
+        position: 'right',
+        title: {
+          display: true,
+          text: 'Peças Impressas',
+          color: '#34d399',
+          font: { size: 10 }
+        },
+        grid: { drawOnChartArea: false },
+        ticks: { color: '#34d399', beginAtZero: true }
       }
     }
   };
@@ -304,6 +412,141 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
           <div className="kpi-footer">
             <span className="kpi-badge badge-neutral">{metrics.totalMeters}m lineares plotter</span>
             <span>{metrics.workingDaysCount} dia(s) úteis</span>
+          </div>
+        </div>
+
+        {/* Lead Time: Tempo de Ciclo entre Etapas */}
+        <div className="kpi-card" style={{ borderTop: '2px solid #f59e0b' }}>
+          <div className="kpi-header">
+            <span className="kpi-title" style={{ color: '#f59e0b', fontWeight: 600 }}>⏱️ Lead Time (Ciclo)</span>
+            <div className="kpi-icon-wrap">
+              <Clock size={16} color="#f59e0b" />
+            </div>
+          </div>
+          <div className="kpi-body">
+            {isLoading ? (
+              <div className="skeleton" style={{ height: '32px', width: '100px', marginBottom: '6px' }} />
+            ) : (
+              <div className="kpi-value">
+                {metrics.leadTimeStats?.avgLeadTimeDays !== null ? (
+                  <>
+                    {metrics.leadTimeStats.avgLeadTimeDays}
+                    <span className="kpi-unit">dias (Arte → Impressão)</span>
+                  </>
+                ) : metrics.leadTimeStats?.avgDaysToExport !== null ? (
+                  <>
+                    {metrics.leadTimeStats.avgDaysToExport}
+                    <span className="kpi-unit">dias (Arte → Exp)</span>
+                  </>
+                ) : (
+                  <>
+                    0
+                    <span className="kpi-unit">dias (em fluxo)</span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <div className="kpi-footer">
+            <span className="kpi-badge badge-neutral">
+              {metrics.leadTimeStats?.completedCyclesCount || 0} pedido(s) 100% impressos
+            </span>
+            <span>
+              {metrics.leadTimeStats?.avgDaysToExport !== null 
+                ? `Média Arte→Exp: ${metrics.leadTimeStats.avgDaysToExport}d` 
+                : `${metrics.leadTimeStats?.totalTrackedOrders || 0} pedidos rastreados`}
+            </span>
+          </div>
+        </div>
+
+        {/* 6. Taxa de Refação / Tipo de Lançamento */}
+        <div className="kpi-card" style={{ borderTop: '2px solid #fbbf24' }}>
+          <div className="kpi-header">
+            <span className="kpi-title" style={{ color: '#fbbf24', fontWeight: 600 }}>🏷️ Taxa de Refação</span>
+            <div className="kpi-icon-wrap">
+              <RefreshCw size={16} color="#fbbf24" />
+            </div>
+          </div>
+          <div className="kpi-body">
+            {isLoading ? (
+              <div className="skeleton" style={{ height: '32px', width: '90px', marginBottom: '6px' }} />
+            ) : (
+              <div className="kpi-value">
+                {metrics.reworkStats?.reworkRate || 0}%
+                <span className="kpi-unit">reprovações / ajustes</span>
+              </div>
+            )}
+          </div>
+          <div className="kpi-footer" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '6px' }}>
+            {/* Barra de distribuição proporcional */}
+            <div style={{ display: 'flex', height: '5px', borderRadius: '3px', overflow: 'hidden', background: 'var(--bg-surface)' }}>
+              <div 
+                style={{ 
+                  width: `${metrics.totalOrders > 0 ? ((metrics.reworkStats?.arteNova || 0) / metrics.totalOrders) * 100 : 100}%`, 
+                  background: '#38bdf8' 
+                }} 
+                title={`Artes Novas: ${metrics.reworkStats?.arteNova || 0}`}
+              />
+              <div 
+                style={{ 
+                  width: `${metrics.totalOrders > 0 ? ((metrics.reworkStats?.ajusteRefacao || 0) / metrics.totalOrders) * 100 : 0}%`, 
+                  background: '#fbbf24' 
+                }} 
+                title={`Ajustes / Refações: ${metrics.reworkStats?.ajusteRefacao || 0}`}
+              />
+              <div 
+                style={{ 
+                  width: `${metrics.totalOrders > 0 ? ((metrics.reworkStats?.reposicao || 0) / metrics.totalOrders) * 100 : 0}%`, 
+                  background: '#f87171' 
+                }} 
+                title={`Reposições: ${metrics.reworkStats?.reposicao || 0}`}
+              />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.69rem' }}>
+              <span style={{ color: '#38bdf8' }}>✨ Nova: <strong>{metrics.reworkStats?.arteNova || 0}</strong></span>
+              <span style={{ color: '#fbbf24' }}>🔄 Ajuste: <strong>{metrics.reworkStats?.ajusteRefacao || 0}</strong></span>
+              <span style={{ color: '#f87171' }}>⚠️ Repos: <strong>{metrics.reworkStats?.reposicao || 0}</strong></span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* 2. Gráfico de Evolução Diária da Produção (Linha do Tempo por Dia) */}
+      <section style={{ marginBottom: '20px' }}>
+        <div className="chart-card">
+          <div className="chart-card-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+            <div>
+              <h3 className="chart-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <TrendingUp size={16} color="#60a5fa" />
+                Evolução da Produção Diária (Linha do Tempo)
+              </h3>
+              <p className="chart-desc">
+                Produção registrada na data exata de cada etapa (Criação da Arte, Fechamento e Impressão de Peças).
+              </p>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '14px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#60a5fa', display: 'inline-block' }} />
+                Criação (artes/dia)
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ width: '10px', height: '10px', borderRadius: '50%', background: '#a78bfa', display: 'inline-block' }} />
+                Exportação (exp/dia)
+              </span>
+              <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                <span style={{ width: '10px', height: '10px', borderRadius: '2px', background: '#34d399', display: 'inline-block' }} />
+                Impressão (peças impressas)
+              </span>
+            </div>
+          </div>
+          <div className="chart-container" style={{ height: '260px' }}>
+            {metrics.dailyTimeline?.labels?.length > 0 ? (
+              <Bar data={dailyChartData} options={dailyChartOptions} />
+            ) : (
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)', fontSize: '0.8rem' }}>
+                Nenhum dado diário encontrado no período.
+              </div>
+            )}
           </div>
         </div>
       </section>

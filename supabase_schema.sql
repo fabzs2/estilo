@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS production_entries (
   pieces_count INTEGER DEFAULT 0,
   meters NUMERIC DEFAULT 0,
   order_type TEXT DEFAULT 'sublimacao_total',
+  work_type TEXT DEFAULT 'arte_nova', -- 'arte_nova' | 'ajuste_refacao' | 'reposicao'
   complexity TEXT DEFAULT 'media',
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
@@ -42,6 +43,7 @@ CREATE TABLE IF NOT EXISTS production_entries (
 ALTER TABLE designers ADD COLUMN IF NOT EXISTS goal_criacao_artes INTEGER DEFAULT 8;
 ALTER TABLE designers ADD COLUMN IF NOT EXISTS goal_exportacao INTEGER DEFAULT 10;
 ALTER TABLE designers ADD COLUMN IF NOT EXISTS goal_impressao_pecas INTEGER DEFAULT 120;
+ALTER TABLE production_entries ADD COLUMN IF NOT EXISTS work_type TEXT DEFAULT 'arte_nova';
 
 -- 3. Índices para Alto Desempenho em Consultas e Filtros
 CREATE INDEX IF NOT EXISTS idx_entries_date ON production_entries(date);
