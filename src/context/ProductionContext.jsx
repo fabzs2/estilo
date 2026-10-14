@@ -621,6 +621,13 @@ export function ProductionProvider({ children }) {
       };
     });
 
+    const rankedDesigners = [...designerStats].sort((a, b) => {
+      if (b.goalAchievementRate !== a.goalAchievementRate) {
+        return (b.goalAchievementRate || 0) - (a.goalAchievementRate || 0);
+      }
+      return (b.ordersCount || 0) - (a.ordersCount || 0);
+    });
+
     // 1. Cálculo de Lead Time / Tempo de Ciclo entre etapas (da Criação à Impressão)
     const orderGroups = new Map();
     entries.forEach((e) => {
