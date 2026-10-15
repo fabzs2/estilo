@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { INITIAL_DESIGNERS, INITIAL_ENTRIES, STAGES, WORK_TYPES } from '../constants/initialData';
+import { INITIAL_DESIGNERS, INITIAL_ORDERS, STAGES, WORK_TYPES } from '../constants/initialData';
 import { 
   supabase, 
   isSupabaseConfigured, 
@@ -20,15 +20,68 @@ export function useProduction() {
 }
 
 const STORAGE_KEYS = {
-  ENTRIES: 'designflow_entries_v2', // v2 para limpar dados mockados anteriores
+  ORDERS: 'designflow_orders_v3',
+  ENTRIES: 'designflow_entries_v2', // Fallback e compatibilidade
   DESIGNERS: 'designflow_designers_v2'
 };
+
+// Função de migração segura: Agrupa lançamentos legados pelo número do pedido
+function groupEntriesIntoOrders(flatEntries) {
+  if (!Array.isArray(flatEntries) || flatEntries.length === 0) return [];
+
+  const orderMap = new Map();
+
+  flatEntries.forEach((entry, idx) => {
+    const rawNumber = (entry.orderNumber || '').trim();
+    const key = rawNumber ? rawNumber.toLowerCase() : `ord_leg_${entry.id || idx}`;
+
+    if (!orderMap.has(key)) {
+      orderMap.set(key, {
+        id: `ord_${rawNumber ? rawNumber.replace(/[^a-zA-Z0-9_-]/g, '_') : Date.now() + '_' + idx}`,
+        orderNumber: rawNumber || `PED-${1000 + idx}`,
+        clientName: entry.clientName || 'Cliente',
+        orderType: entry.orderType || 'sublimacao_total',
+        totalPieces: Number(entry.piecesCount) || 0,
+        date: entry.date || new Date().toISOString().split('T')[0],
+        workType: entry.workType || 'arte_nova',
+        notes: entry.notes || '',
+        createdAt: entry.createdAt || new Date().toISOString(),
+        entries: []
+      });
+    }
+
+    const order = orderMap.get(key);
+
+    // Ajusta totalPieces se a etapa de impressão trouxer a contagem real de peças
+    if (entry.stage === 'impressao' && Number(entry.piecesCount) > 0) {
+      order.totalPieces = Number(entry.piecesCount);
+    } else if (Number(entry.piecesCount) > Number(order.totalPieces)) {
+      order.totalPieces = Number(entry.piecesCount);
+    }
+
+    // Vincula o lançamento interno
+    order.entries.push({
+      id: entry.id || `ent_${Date.now()}_${idx}`,
+      stage: entry.stage || 'criacao',
+      designerId: entry.designerId || '',
+      designerName: entry.designerName || 'Designer',
+      date: entry.date || order.date,
+      piecesCount: Number(entry.piecesCount) || (entry.stage === 'impressao' ? order.totalPieces : 1),
+      meters: Number(entry.meters) || 0,
+      workType: entry.workType || order.workType || 'arte_nova',
+      notes: entry.notes || '',
+      createdAt: entry.createdAt || new Date().toISOString()
+    });
+  });
+
+  return Array.from(orderMap.values());
+}
 
 export function ProductionProvider({ children }) {
   const [isSupabaseActive] = useState(() => isSupabaseConfigured());
   const [isLoadingDB, setIsLoadingDB] = useState(false);
 
-  // Inicialização de Designers
+  // 1. Designers
   const [designers, setDesigners] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.DESIGNERS);
@@ -38,17 +91,30 @@ export function ProductionProvider({ children }) {
     }
   });
 
-  // Inicialização de Lançamentos de Produção
-  const [entries, setEntries] = useState(() => {
+  // 2. Pedidos com seus Lançamentos Internos
+  const [orders, setOrders] = useState(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEYS.ENTRIES);
-      return saved ? JSON.parse(saved) : INITIAL_ENTRIES;
+      const savedOrders = localStorage.getItem(STORAGE_KEYS.ORDERS);
+      if (savedOrders) {
+        const parsed = JSON.parse(savedOrders);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      }
+      // Se não havia v3, verifica se havia lançamentos no v2 e migra automaticamente
+      const savedEntries = localStorage.getItem(STORAGE_KEYS.ENTRIES);
+      if (savedEntries) {
+        const parsedEntries = JSON.parse(savedEntries);
+        if (Array.isArray(parsedEntries) && parsedEntries.length > 0) {
+          const migrated = groupEntriesIntoOrders(parsedEntries);
+          return migrated;
+        }
+      }
+      return INITIAL_ORDERS;
     } catch (e) {
-      return INITIAL_ENTRIES;
+      return INITIAL_ORDERS;
     }
   });
 
-  // Carregar dados remotos do Supabase na inicialização se configurado
+  // Carregar dados remotos do Supabase se configurado
   useEffect(() => {
     if (!isSupabaseActive || !supabase) return;
 
@@ -62,19 +128,19 @@ export function ProductionProvider({ children }) {
           .order('name', { ascending: true });
 
         if (!desError && dbDesigners) {
-          const mappedDes = dbDesigners.map(mapDesignerFromDB);
-          setDesigners(mappedDes);
+          setDesigners(dbDesigners.map(mapDesignerFromDB));
         }
 
-        // Buscar pedidos
+        // Buscar lançamentos e agrupar em pedidos
         const { data: dbEntries, error: entError } = await supabase
           .from('production_entries')
           .select('*')
           .order('date', { ascending: false });
 
-        if (!entError && dbEntries) {
-          const mappedEnt = dbEntries.map(mapEntryFromDB);
-          setEntries(mappedEnt);
+        if (!entError && dbEntries && dbEntries.length > 0) {
+          const mappedEntries = dbEntries.map(mapEntryFromDB);
+          const groupedOrders = groupEntriesIntoOrders(mappedEntries);
+          setOrders(groupedOrders);
         }
       } catch (err) {
         console.error('Erro ao conectar ao Supabase:', err);
@@ -86,7 +152,22 @@ export function ProductionProvider({ children }) {
     loadFromSupabase();
   }, [isSupabaseActive]);
 
-  // Sincronizar com localStorage como cache/fallback
+  // Lista plana de lançamentos (derivada de todos os pedidos)
+  const entries = useMemo(() => {
+    return orders.flatMap((order) =>
+      (order.entries || []).map((entry) => ({
+        ...entry,
+        orderId: order.id,
+        orderNumber: order.orderNumber,
+        clientName: order.clientName,
+        orderType: order.orderType,
+        totalPieces: order.totalPieces,
+        orderDate: order.date
+      }))
+    );
+  }, [orders]);
+
+  // Sincronizar com localStorage como cache
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.DESIGNERS, JSON.stringify(designers));
@@ -95,9 +176,10 @@ export function ProductionProvider({ children }) {
 
   useEffect(() => {
     try {
+      localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(orders));
       localStorage.setItem(STORAGE_KEYS.ENTRIES, JSON.stringify(entries));
     } catch (e) {}
-  }, [entries]);
+  }, [orders, entries]);
 
   // Filtro de período selecionado
   const [periodFilter, setPeriodFilter] = useState('this_week');
@@ -106,36 +188,45 @@ export function ProductionProvider({ children }) {
     end: new Date().toISOString().split('T')[0]
   });
 
-  // Filtro secundário na tabela/visualizações
+  // Filtros secundários
   const [selectedStageFilter, setSelectedStageFilter] = useState('all');
   const [selectedDesignerFilter, setSelectedDesignerFilter] = useState('all');
   const [selectedWorkTypeFilter, setSelectedWorkTypeFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
 
-  // Modais
+  // Modais de Pedido & Lançamento
   const [isQuickEntryOpen, setIsQuickEntryOpen] = useState(false);
+  const [editingOrder, setEditingOrder] = useState(null);
+
+  // Modal de Lançamento Específico dentro do Pedido
+  const [isStageModalOpen, setIsStageModalOpen] = useState(false);
+  const [targetOrderForStage, setTargetOrderForStage] = useState(null);
+  const [editingStageEntry, setEditingStageEntry] = useState(null);
+  const [initialStageForModal, setInitialStageForModal] = useState('criacao');
+
+  // Outros Modais
   const [isBatchEntryOpen, setIsBatchEntryOpen] = useState(false);
   const [isReportOpen, setIsReportOpen] = useState(false);
   const [isTeamModalOpen, setIsTeamModalOpen] = useState(false);
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
   const [isSectorGoalsModalOpen, setIsSectorGoalsModalOpen] = useState(false);
-  const [editingEntry, setEditingEntry] = useState(null);
-  const [advanceStageData, setAdvanceStageData] = useState(null);
 
-  const openAdvanceStage = (entry, targetStage) => {
-    setAdvanceStageData({
-      orderNumber: entry.orderNumber,
-      clientName: entry.clientName,
-      orderType: entry.orderType || 'sublimacao_total',
-      totalPieces: entry.piecesCount || '',
-      notes: entry.notes || '',
-      targetStage: targetStage // 'exportacao' | 'impressao'
-    });
-    setEditingEntry(null);
-    setIsQuickEntryOpen(true);
+  // Helpers para abrir modal de lançamento em pedido existente
+  const openAddStageToOrder = (order, stage = 'criacao') => {
+    setTargetOrderForStage(order);
+    setEditingStageEntry(null);
+    setInitialStageForModal(stage);
+    setIsStageModalOpen(true);
   };
 
-  // Metas Globais do Setor (Personalizadas por Categoria ou calculadas pela equipe)
+  const openEditStageInOrder = (order, entry) => {
+    setTargetOrderForStage(order);
+    setEditingStageEntry(entry);
+    setInitialStageForModal(entry.stage || 'criacao');
+    setIsStageModalOpen(true);
+  };
+
+  // Metas Globais do Setor
   const [sectorGoals, setSectorGoals] = useState(() => {
     try {
       const saved = localStorage.getItem('designflow_sector_goals');
@@ -159,110 +250,273 @@ export function ProductionProvider({ children }) {
     } catch (e) {}
   };
 
-  // Ações de Entradas
-  const addEntry = async (newEntry) => {
-    const designer = designers.find((d) => d.id === newEntry.designerId);
-    const item = {
-      ...newEntry,
-      id: `ent_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-      designerName: designer ? designer.name : 'Designer',
-      workType: newEntry.workType || 'arte_nova',
-      piecesCount: Number(newEntry.piecesCount) || 0,
-      meters: Number(newEntry.meters) || 0,
-      createdAt: new Date().toISOString()
+  // ==========================================
+  // AÇÕES DE PEDIDOS E LANÇAMENTOS
+  // ==========================================
+
+  // Criar Novo Pedido com lançamentos opcionais/iniciais
+  const addOrder = async (orderData, stageEntries = []) => {
+    const orderId = `ord_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+
+    const formattedEntries = stageEntries.map((stg, idx) => {
+      const des = designers.find((d) => d.id === stg.designerId);
+      return {
+        ...stg,
+        id: `ent_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
+        designerName: des ? des.name : (stg.designerName || 'Designer'),
+        workType: stg.workType || orderData.workType || 'arte_nova',
+        piecesCount: Number(stg.piecesCount) || 0,
+        meters: Number(stg.meters) || 0,
+        createdAt: new Date().toISOString()
+      };
+    });
+
+    const newOrder = {
+      ...orderData,
+      id: orderId,
+      orderNumber: (orderData.orderNumber || '').trim() || `PED-${Math.floor(1000 + Math.random() * 9000)}`,
+      totalPieces: Number(orderData.totalPieces) || 0,
+      workType: orderData.workType || 'arte_nova',
+      createdAt: new Date().toISOString(),
+      entries: formattedEntries
     };
 
-    setEntries((prev) => [item, ...prev]);
+    setOrders((prev) => [newOrder, ...prev]);
 
-    if (isSupabaseActive && supabase) {
+    // Sincronizar lançamentos com o Supabase
+    if (isSupabaseActive && supabase && formattedEntries.length > 0) {
       try {
-        const { error } = await supabase.from('production_entries').insert(mapEntryToDB(item));
-        if (error) {
-          console.error('Erro ao salvar pedido no Supabase:', error);
-          if (error.code === '42P01' || error.message?.includes('does not exist')) {
-            alert('Aviso do Supabase:\n\nA tabela "production_entries" ainda não existe no seu banco de dados Supabase!\n\nExecute o script do arquivo supabase_schema.sql no SQL Editor do Supabase para criar as tabelas.');
-          } else {
-            console.warn('Supabase erro:', error.message);
-          }
-        }
+        const dbEntries = formattedEntries.map((ent) =>
+          mapEntryToDB({
+            ...ent,
+            orderNumber: newOrder.orderNumber,
+            clientName: newOrder.clientName,
+            orderType: newOrder.orderType
+          })
+        );
+        await supabase.from('production_entries').insert(dbEntries);
       } catch (err) {
         console.error('Erro ao salvar no Supabase:', err);
       }
     }
 
-    return item;
+    return newOrder;
   };
 
-  const updateEntry = async (id, updatedFields) => {
-    const designer = designers.find((d) => d.id === (updatedFields.designerId));
-    let updatedItem = null;
+  // Atualizar Cabeçalho do Pedido
+  const updateOrder = async (orderId, updatedFields) => {
+    let updatedOrder = null;
 
-    setEntries((prev) =>
-      prev.map((item) => {
-        if (item.id === id) {
-          updatedItem = {
-            ...item,
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id === orderId) {
+          updatedOrder = {
+            ...ord,
             ...updatedFields,
-            designerName: designer ? designer.name : (item.designerName || 'Designer'),
-            piecesCount: Number(updatedFields.piecesCount ?? item.piecesCount) || 0,
-            meters: Number(updatedFields.meters ?? item.meters) || 0
+            totalPieces: Number(updatedFields.totalPieces ?? ord.totalPieces) || 0
           };
-          return updatedItem;
+          return updatedOrder;
         }
-        return item;
+        return ord;
       })
     );
 
-    if (isSupabaseActive && supabase && updatedItem) {
+    // Se mudou nome do cliente ou número do pedido, atualiza lançamentos no Supabase
+    if (isSupabaseActive && supabase && updatedOrder) {
       try {
-        const { error } = await supabase.from('production_entries').update(mapEntryToDB(updatedItem)).eq('id', id);
-        if (error) console.error('Erro ao atualizar no Supabase:', error);
+        await supabase
+          .from('production_entries')
+          .update({
+            order_number: updatedOrder.orderNumber,
+            client_name: updatedOrder.clientName,
+            order_type: updatedOrder.orderType
+          })
+          .eq('order_number', updatedFields.previousOrderNumber || updatedOrder.orderNumber);
       } catch (err) {
-        console.error('Erro ao atualizar no Supabase:', err);
+        console.error('Erro ao atualizar pedido no Supabase:', err);
       }
     }
   };
 
-  const deleteEntry = async (id) => {
-    setEntries((prev) => prev.filter((item) => item.id !== id));
+  // Excluir Pedido Completo (e todos os seus lançamentos)
+  const deleteOrder = async (orderId) => {
+    const target = orders.find((o) => o.id === orderId);
+    setOrders((prev) => prev.filter((o) => o.id !== orderId));
+
+    if (isSupabaseActive && supabase && target) {
+      try {
+        await supabase
+          .from('production_entries')
+          .delete()
+          .eq('order_number', target.orderNumber);
+      } catch (err) {
+        console.error('Erro ao excluir pedido no Supabase:', err);
+      }
+    }
+  };
+
+  // Adicionar um Novo Lançamento de Etapa a um Pedido Existente
+  const addEntryToOrder = async (orderId, newEntryData) => {
+    const designer = designers.find((d) => d.id === newEntryData.designerId);
+    const newEntry = {
+      ...newEntryData,
+      id: `ent_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      designerName: designer ? designer.name : (newEntryData.designerName || 'Designer'),
+      workType: newEntryData.workType || 'arte_nova',
+      piecesCount: Number(newEntryData.piecesCount) || 0,
+      meters: Number(newEntryData.meters) || 0,
+      createdAt: new Date().toISOString()
+    };
+
+    let targetOrder = null;
+
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id === orderId) {
+          targetOrder = ord;
+          return {
+            ...ord,
+            entries: [...(ord.entries || []), newEntry]
+          };
+        }
+        return ord;
+      })
+    );
+
+    if (isSupabaseActive && supabase && targetOrder) {
+      try {
+        await supabase.from('production_entries').insert(
+          mapEntryToDB({
+            ...newEntry,
+            orderNumber: targetOrder.orderNumber,
+            clientName: targetOrder.clientName,
+            orderType: targetOrder.orderType
+          })
+        );
+      } catch (err) {
+        console.error('Erro ao salvar lançamento no Supabase:', err);
+      }
+    }
+
+    return newEntry;
+  };
+
+  // Atualizar Lançamento de Etapa Existente dentro de um Pedido
+  const updateEntryInOrder = async (orderId, entryId, updatedEntryFields) => {
+    const designer = designers.find((d) => d.id === updatedEntryFields.designerId);
+    let updatedEntry = null;
+    let targetOrder = null;
+
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id === orderId) {
+          targetOrder = ord;
+          const updatedEntries = (ord.entries || []).map((ent) => {
+            if (ent.id === entryId) {
+              updatedEntry = {
+                ...ent,
+                ...updatedEntryFields,
+                designerName: designer ? designer.name : (ent.designerName || 'Designer'),
+                piecesCount: Number(updatedEntryFields.piecesCount ?? ent.piecesCount) || 0,
+                meters: Number(updatedEntryFields.meters ?? ent.meters) || 0
+              };
+              return updatedEntry;
+            }
+            return ent;
+          });
+          return { ...ord, entries: updatedEntries };
+        }
+        return ord;
+      })
+    );
+
+    if (isSupabaseActive && supabase && updatedEntry && targetOrder) {
+      try {
+        await supabase.from('production_entries').update(
+          mapEntryToDB({
+            ...updatedEntry,
+            orderNumber: targetOrder.orderNumber,
+            clientName: targetOrder.clientName,
+            orderType: targetOrder.orderType
+          })
+        ).eq('id', entryId);
+      } catch (err) {
+        console.error('Erro ao atualizar lançamento no Supabase:', err);
+      }
+    }
+  };
+
+  // Remover Lançamento de Etapa de um Pedido
+  const deleteEntryFromOrder = async (orderId, entryId) => {
+    setOrders((prev) =>
+      prev.map((ord) => {
+        if (ord.id === orderId) {
+          return {
+            ...ord,
+            entries: (ord.entries || []).filter((ent) => ent.id !== entryId)
+          };
+        }
+        return ord;
+      })
+    );
 
     if (isSupabaseActive && supabase) {
       try {
-        const { error } = await supabase.from('production_entries').delete().eq('id', id);
-        if (error) console.error('Erro ao deletar do Supabase:', error);
+        await supabase.from('production_entries').delete().eq('id', entryId);
       } catch (err) {
-        console.error('Erro ao deletar do Supabase:', err);
+        console.error('Erro ao excluir lançamento no Supabase:', err);
       }
+    }
+  };
+
+  // Atalhos de Compatibilidade para chamadas antigas
+  const addEntry = async (newEntry) => {
+    // Cria um pedido com esse lançamento
+    return addOrder(
+      {
+        orderNumber: newEntry.orderNumber,
+        clientName: newEntry.clientName,
+        orderType: newEntry.orderType || 'sublimacao_total',
+        totalPieces: newEntry.piecesCount || 0,
+        date: newEntry.date,
+        workType: newEntry.workType || 'arte_nova',
+        notes: newEntry.notes || ''
+      },
+      [newEntry]
+    );
+  };
+
+  const updateEntry = async (entryId, fields) => {
+    // Procura o pedido que contém esse entryId
+    const targetOrder = orders.find((o) => (o.entries || []).some((e) => e.id === entryId));
+    if (targetOrder) {
+      return updateEntryInOrder(targetOrder.id, entryId, fields);
+    }
+  };
+
+  const deleteEntry = async (entryId) => {
+    const targetOrder = orders.find((o) => (o.entries || []).some((e) => e.id === entryId));
+    if (targetOrder) {
+      // Se era o único lançamento do pedido, exclui o pedido também
+      if (targetOrder.entries.length <= 1) {
+        return deleteOrder(targetOrder.id);
+      }
+      return deleteEntryFromOrder(targetOrder.id, entryId);
     }
   };
 
   const addBatchEntries = async (batchItems) => {
-    const formatted = batchItems.map((item, idx) => {
-      const designer = designers.find((d) => d.id === item.designerId);
-      return {
-        ...item,
-        id: `ent_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
-        designerName: designer ? designer.name : 'Designer',
-        workType: item.workType || 'arte_nova',
-        piecesCount: Number(item.piecesCount) || 0,
-        meters: Number(item.meters) || 0,
-        createdAt: new Date().toISOString()
-      };
-    });
-
-    setEntries((prev) => [...formatted, ...prev]);
-
-    if (isSupabaseActive && supabase) {
-      try {
-        const { error } = await supabase.from('production_entries').insert(formatted.map(mapEntryToDB));
-        if (error) console.error('Erro ao salvar lote no Supabase:', error);
-      } catch (err) {
-        console.error('Erro ao salvar lote no Supabase:', err);
-      }
+    // Agrupa por número de pedido e adiciona
+    const grouped = groupEntriesIntoOrders(batchItems);
+    for (const ord of grouped) {
+      await addOrder(ord, ord.entries);
     }
   };
 
-  // Ações de Designers
+  // ==========================================
+  // AÇÕES DE DESIGNERS
+  // ==========================================
+
   const addDesigner = async (newDes) => {
     const designer = {
       ...newDes,
@@ -280,15 +534,7 @@ export function ProductionProvider({ children }) {
 
     if (isSupabaseActive && supabase) {
       try {
-        const { error } = await supabase.from('designers').insert(mapDesignerToDB(designer));
-        if (error) {
-          console.error('Erro ao salvar designer no Supabase:', error);
-          if (error.code === '42P01' || error.message?.includes('does not exist')) {
-            alert('Aviso do Supabase:\n\nA tabela "designers" ainda NÃO EXISTE no seu projeto do Supabase!\n\nNo Supabase, as tabelas não são criadas automaticamente pela tela. Você precisa abrir o painel do Supabase, ir no menu "SQL Editor" e rodar o script SQL para criar as tabelas.');
-          } else {
-            alert(`Aviso ao salvar designer no Supabase: ${error.message}`);
-          }
-        }
+        await supabase.from('designers').insert(mapDesignerToDB(designer));
       } catch (err) {
         console.error('Erro ao salvar designer no Supabase:', err);
       }
@@ -308,10 +554,14 @@ export function ProductionProvider({ children }) {
     );
 
     if (updatedFields.name) {
-      setEntries((prev) =>
-        prev.map((e) =>
-          e.designerId === id ? { ...e, designerName: updatedFields.name } : e
-        )
+      // Atualiza nome nos lançamentos internos
+      setOrders((prev) =>
+        prev.map((ord) => ({
+          ...ord,
+          entries: (ord.entries || []).map((e) =>
+            e.designerId === id ? { ...e, designerName: updatedFields.name } : e
+          )
+        }))
       );
     }
 
@@ -338,8 +588,9 @@ export function ProductionProvider({ children }) {
 
   const clearAllData = async () => {
     setDesigners([]);
-    setEntries([]);
+    setOrders([]);
     localStorage.removeItem(STORAGE_KEYS.DESIGNERS);
+    localStorage.removeItem(STORAGE_KEYS.ORDERS);
     localStorage.removeItem(STORAGE_KEYS.ENTRIES);
 
     if (isSupabaseActive && supabase) {
@@ -352,7 +603,6 @@ export function ProductionProvider({ children }) {
     }
   };
 
-  // Enviar dados locais para o Supabase (para migrar dados criados no PC local)
   const syncLocalToSupabase = async () => {
     if (!isSupabaseActive || !supabase) {
       alert('Conecte o Supabase primeiro nas configurações.');
@@ -368,31 +618,26 @@ export function ProductionProvider({ children }) {
         const { error: entErr } = await supabase.from('production_entries').upsert(entries.map(mapEntryToDB));
         if (entErr) throw entErr;
       }
-      alert(`✅ Sincronização concluída com sucesso!\n\n${designers.length} designer(s) e ${entries.length} pedido(s) foram enviados para o Supabase na nuvem e agora estarão visíveis de qualquer PC ou celular.`);
+      alert(`✅ Sincronização concluída com sucesso!\n\n${designers.length} designer(s) e ${orders.length} pedido(s) foram sincronizados com o Supabase.`);
     } catch (err) {
       console.error('Erro ao sincronizar com Supabase:', err);
-      if (err.code === '42P01' || err.message?.includes('does not exist')) {
-        alert('Atenção: A tabela no Supabase ainda não foi criada. Execute o script SQL no SQL Editor do Supabase primeiro.');
-      } else {
-        alert(`Erro na sincronização: ${err.message}`);
-      }
+      alert(`Erro na sincronização: ${err.message}`);
     } finally {
       setIsLoadingDB(false);
     }
   };
 
-  // Recarregar dados mais recentes do Supabase
   const refreshFromSupabase = async () => {
     if (!isSupabaseActive || !supabase) return;
     setIsLoadingDB(true);
     try {
-      const { data: dbDes, error: desErr } = await supabase.from('designers').select('*').order('name');
-      if (!desErr && dbDes) {
-        setDesigners(dbDes.map(mapDesignerFromDB));
-      }
-      const { data: dbEnt, error: entErr } = await supabase.from('production_entries').select('*').order('date', { ascending: false });
-      if (!entErr && dbEnt) {
-        setEntries(dbEnt.map(mapEntryFromDB));
+      const { data: dbDes } = await supabase.from('designers').select('*').order('name');
+      if (dbDes) setDesigners(dbDes.map(mapDesignerFromDB));
+
+      const { data: dbEnt } = await supabase.from('production_entries').select('*').order('date', { ascending: false });
+      if (dbEnt) {
+        const mappedEntries = dbEnt.map(mapEntryFromDB);
+        setOrders(groupEntriesIntoOrders(mappedEntries));
       }
     } catch (e) {
       console.error(e);
@@ -401,7 +646,10 @@ export function ProductionProvider({ children }) {
     }
   };
 
-  // Determinar limites de data para o período atual
+  // ==========================================
+  // FILTRAGEM POR PERÍODO & VISUALIZAÇÕES
+  // ==========================================
+
   const dateBounds = useMemo(() => {
     const now = new Date();
     const todayStr = now.toISOString().split('T')[0];
@@ -439,7 +687,18 @@ export function ProductionProvider({ children }) {
     }
   }, [periodFilter, customRange]);
 
-  // Entradas filtradas pelo período
+  // Pedidos que pertencem ao período (pela data do pedido ou por algum lançamento no período)
+  const periodOrders = useMemo(() => {
+    return orders.filter((ord) => {
+      const orderDateMatch = ord.date && ord.date >= dateBounds.start && ord.date <= dateBounds.end;
+      const entryDateMatch = (ord.entries || []).some(
+        (e) => e.date && e.date >= dateBounds.start && e.date <= dateBounds.end
+      );
+      return orderDateMatch || entryDateMatch;
+    });
+  }, [orders, dateBounds]);
+
+  // Lançamentos no período (para alimentar produtividade e médias)
   const periodEntries = useMemo(() => {
     return entries.filter((item) => {
       if (!item.date) return false;
@@ -447,7 +706,47 @@ export function ProductionProvider({ children }) {
     });
   }, [entries, dateBounds]);
 
-  // Entradas filtradas completas
+  // Pedidos Filtrados (para exibição na OrdersTable)
+  const filteredOrders = useMemo(() => {
+    return periodOrders.filter((ord) => {
+      // 1. Filtro por Etapa
+      if (selectedStageFilter !== 'all') {
+        const hasStage = (ord.entries || []).some((e) => e.stage === selectedStageFilter);
+        if (!hasStage) return false;
+      }
+
+      // 2. Filtro por Designer
+      if (selectedDesignerFilter !== 'all') {
+        const hasDesigner = (ord.entries || []).some((e) => e.designerId === selectedDesignerFilter);
+        if (!hasDesigner) return false;
+      }
+
+      // 3. Filtro por Tipo de Lançamento (Arte Nova, Ajuste, Reposição)
+      if (selectedWorkTypeFilter !== 'all') {
+        const matchOrderWork = (ord.workType || 'arte_nova') === selectedWorkTypeFilter;
+        const matchEntryWork = (ord.entries || []).some(
+          (e) => (e.workType || 'arte_nova') === selectedWorkTypeFilter
+        );
+        if (!matchOrderWork && !matchEntryWork) return false;
+      }
+
+      // 4. Termo de Busca
+      if (searchTerm.trim()) {
+        const term = searchTerm.toLowerCase();
+        const matchNum = ord.orderNumber?.toLowerCase().includes(term);
+        const matchClient = ord.clientName?.toLowerCase().includes(term);
+        const matchNotes = ord.notes?.toLowerCase().includes(term);
+        const matchDesigner = (ord.entries || []).some((e) =>
+          e.designerName?.toLowerCase().includes(term)
+        );
+        if (!matchNum && !matchClient && !matchNotes && !matchDesigner) return false;
+      }
+
+      return true;
+    });
+  }, [periodOrders, selectedStageFilter, selectedDesignerFilter, selectedWorkTypeFilter, searchTerm]);
+
+  // Lançamentos filtrados (compatibilidade com CSV)
   const filteredEntries = useMemo(() => {
     return periodEntries.filter((item) => {
       if (selectedStageFilter !== 'all' && item.stage !== selectedStageFilter) return false;
@@ -465,9 +764,14 @@ export function ProductionProvider({ children }) {
     });
   }, [periodEntries, selectedStageFilter, selectedDesignerFilter, selectedWorkTypeFilter, searchTerm]);
 
-  // Cálculos de Métricas & Médias do Setor por Categoria
+  // ==========================================
+  // CÁLCULOS DE MÉTRICAS & PRODUTIVIDADE
+  // ==========================================
+
   const metrics = useMemo(() => {
-    const totalOrders = periodEntries.length;
+    // TOTAL DE PEDIDOS: rigorosamente a quantidade de PEDIDOS ÚNICOS no período!
+    const totalOrders = periodOrders.length;
+
     let totalPieces = 0;
     let totalMeters = 0;
     let impressaoTotalPieces = 0;
@@ -479,94 +783,110 @@ export function ProductionProvider({ children }) {
     const exportacaoEntriesAll = periodEntries.filter((e) => e.stage === 'exportacao');
     const impressaoEntriesAll = periodEntries.filter((e) => e.stage === 'impressao');
 
-    // Criação: total de artes (se o pedido tiver piecesCount > 0 conta o número de artes, senão 1 arte por registro)
-    const criacaoTotalArtes = criacaoEntriesAll.reduce((acc, e) => acc + (Number(e.piecesCount) > 0 ? Number(e.piecesCount) : 1), 0);
-    // Exportação: total de fechamentos/exportações (se o pedido tiver piecesCount > 0 conta a qtd, senão 1 exp por registro)
-    const exportacaoTotalCount = exportacaoEntriesAll.reduce((acc, e) => acc + (Number(e.piecesCount) > 0 ? Number(e.piecesCount) : 1), 0);
+    // Criação: total de artes
+    const criacaoTotalArtes = criacaoEntriesAll.reduce(
+      (acc, e) => acc + (Number(e.piecesCount) > 0 ? Number(e.piecesCount) : 1),
+      0
+    );
+
+    // Exportação: total de fechamentos
+    const exportacaoTotalCount = exportacaoEntriesAll.reduce(
+      (acc, e) => acc + (Number(e.piecesCount) > 0 ? Number(e.piecesCount) : 1),
+      0
+    );
+
     // Impressão: estritamente SOMENTE PEÇAS IMPRESSAS
     impressaoEntriesAll.forEach((e) => {
       impressaoTotalPieces += Number(e.piecesCount) || 0;
     });
 
+    // Peças gerais somadas a partir dos pedidos do período
+    totalPieces = periodOrders.reduce((acc, ord) => acc + (Number(ord.totalPieces) || 0), 0);
+
     periodEntries.forEach((item) => {
-      totalPieces += Number(item.piecesCount) || 0;
       totalMeters += Number(item.meters) || 0;
       if (item.date) uniqueDates.add(item.date);
     });
+
+    // Se nenhum lançamento teve data específica, usa as datas dos pedidos
+    if (uniqueDates.size === 0) {
+      periodOrders.forEach((ord) => {
+        if (ord.date) uniqueDates.add(ord.date);
+      });
+    }
 
     const workingDaysCount = Math.max(1, uniqueDates.size);
     const activeDesigners = designers.filter((d) => d.active);
     const activeDesignersCount = Math.max(1, activeDesigners.length);
 
     // Médias Diárias Globais do Setor
-    const teamDailyAvgOrders = activeDesigners.length > 0 ? (totalOrders / workingDaysCount) : 0;
-    const avgOrdersPerDesigner = activeDesigners.length > 0 ? (totalOrders / activeDesignersCount) : 0;
-    
+    const teamDailyAvgOrders = activeDesigners.length > 0 ? totalOrders / workingDaysCount : 0;
+    const avgOrdersPerDesigner = activeDesigners.length > 0 ? totalOrders / activeDesignersCount : 0;
+
     // Médias Diárias Específicas por Categoria
-    // Criação: artes diárias
-    const teamDailyAvgCriacao = activeDesigners.length > 0 ? (criacaoTotalArtes / workingDaysCount) : 0;
-    // Exportação: exportações diárias
-    const teamDailyAvgExportacao = activeDesigners.length > 0 ? (exportacaoTotalCount / workingDaysCount) : 0;
-    // Impressão: somente peças impressas diárias
+    const teamDailyAvgCriacao = activeDesigners.length > 0 ? criacaoTotalArtes / workingDaysCount : 0;
+    const teamDailyAvgExportacao = activeDesigners.length > 0 ? exportacaoTotalCount / workingDaysCount : 0;
     const teamDailyAvgImpressaoPieces = activeDesigners.length > 0 ? Math.round(impressaoTotalPieces / workingDaysCount) : 0;
 
-    // Metas Globais do Setor (personalizadas ou calculadas a partir da soma dos designers com meta > 0)
+    // Metas Globais do Setor
     const calculatedTeamGoalCriacao = activeDesigners.reduce((acc, d) => acc + (Number(d.goalCriacaoArtes) || 0), 0);
     const calculatedTeamGoalExportacao = activeDesigners.reduce((acc, d) => acc + (Number(d.goalExportacao) || 0), 0);
     const calculatedTeamGoalImpressaoPieces = activeDesigners.reduce((acc, d) => acc + (Number(d.goalImpressaoPecas) || 0), 0);
 
-    const teamDailyGoalCriacao = sectorGoals?.criacao !== undefined && sectorGoals?.criacao !== null
-      ? Number(sectorGoals.criacao)
-      : (calculatedTeamGoalCriacao || 8);
+    const teamDailyGoalCriacao =
+      sectorGoals?.criacao !== undefined && sectorGoals?.criacao !== null
+        ? Number(sectorGoals.criacao)
+        : (calculatedTeamGoalCriacao || 8);
 
-    const teamDailyGoalExportacao = sectorGoals?.exportacao !== undefined && sectorGoals?.exportacao !== null
-      ? Number(sectorGoals.exportacao)
-      : (calculatedTeamGoalExportacao || 10);
+    const teamDailyGoalExportacao =
+      sectorGoals?.exportacao !== undefined && sectorGoals?.exportacao !== null
+        ? Number(sectorGoals.exportacao)
+        : (calculatedTeamGoalExportacao || 10);
 
-    const teamDailyGoalImpressaoPieces = sectorGoals?.impressao !== undefined && sectorGoals?.impressao !== null
-      ? Number(sectorGoals.impressao)
-      : (calculatedTeamGoalImpressaoPieces || 120);
+    const teamDailyGoalImpressaoPieces =
+      sectorGoals?.impressao !== undefined && sectorGoals?.impressao !== null
+        ? Number(sectorGoals.impressao)
+        : (calculatedTeamGoalImpressaoPieces || 120);
 
-    // Estatísticas Individuais por Designer
+    // Estatísticas Individuais por Designer (somando todos os lançamentos em que atuou)
     const designerStats = designers.map((des) => {
       const desEntries = periodEntries.filter((e) => e.designerId === des.id);
       const desDates = new Set(desEntries.map((e) => e.date).filter(Boolean));
       const desWorkingDays = Math.max(1, desDates.size);
 
-      const ordersCount = desEntries.length;
+      // Quantos pedidos distintos ele tocou no período
+      const distinctOrdersCount = new Set(desEntries.map((e) => e.orderNumber || e.orderId)).size;
+      const ordersCount = distinctOrdersCount > 0 ? distinctOrdersCount : desEntries.length;
+
       const piecesCount = desEntries.reduce((acc, e) => acc + (Number(e.piecesCount) || 0), 0);
       const metersCount = desEntries.reduce((acc, e) => acc + (Number(e.meters) || 0), 0);
 
-      // Quantidades por Categoria do Designer
+      // Quantidades por Categoria
       const desCriacaoEntries = desEntries.filter((e) => e.stage === 'criacao');
       const desExportacaoEntries = desEntries.filter((e) => e.stage === 'exportacao');
       const desImpressaoEntries = desEntries.filter((e) => e.stage === 'impressao');
 
-      // Criação: artes diárias
       const criacaoCount = desCriacaoEntries.reduce((acc, e) => acc + (Number(e.piecesCount) > 0 ? Number(e.piecesCount) : 1), 0);
-      // Exportação: exportações diárias
       const exportacaoCount = desExportacaoEntries.reduce((acc, e) => acc + (Number(e.piecesCount) > 0 ? Number(e.piecesCount) : 1), 0);
-      // Impressão: somente peças impressas
       const impressaoPieces = desImpressaoEntries.reduce((acc, e) => acc + (Number(e.piecesCount) || 0), 0);
       const impressaoCount = desImpressaoEntries.length;
 
-      // Médias Diárias Específicas
-      const dailyAvgCriacao = Number((criacaoCount / desWorkingDays).toFixed(1)); // artes/dia
-      const dailyAvgExportacao = Number((exportacaoCount / desWorkingDays).toFixed(1)); // exportações/dia
-      const dailyAvgImpressaoPieces = Math.round(impressaoPieces / desWorkingDays); // peças impressas/dia
+      // Médias Diárias
+      const dailyAvgCriacao = Number((criacaoCount / desWorkingDays).toFixed(1));
+      const dailyAvgExportacao = Number((exportacaoCount / desWorkingDays).toFixed(1));
+      const dailyAvgImpressaoPieces = Math.round(impressaoPieces / desWorkingDays);
       const dailyAvgOrders = Number((ordersCount / desWorkingDays).toFixed(1));
 
-      // Metas do Designer (0 se não atuar na categoria)
+      // Metas
       const goalCriacao = des.goalCriacaoArtes !== undefined && des.goalCriacaoArtes !== null ? Number(des.goalCriacaoArtes) : 8;
       const goalExportacao = des.goalExportacao !== undefined && des.goalExportacao !== null ? Number(des.goalExportacao) : 10;
       const goalImpressaoPieces = des.goalImpressaoPecas !== undefined && des.goalImpressaoPecas !== null ? Number(des.goalImpressaoPecas) : 120;
 
-      // Taxas de Atingimento por Categoria (null se meta for 0 / desativada para este designer)
+      // Taxas
       const rateCriacao = goalCriacao > 0 ? Math.round((dailyAvgCriacao / goalCriacao) * 100) : null;
       const rateExportacao = goalExportacao > 0 ? Math.round((dailyAvgExportacao / goalExportacao) * 100) : null;
       const rateImpressao = goalImpressaoPieces > 0 ? Math.round((dailyAvgImpressaoPieces / goalImpressaoPieces) * 100) : null;
 
-      // Determinar Etapa Principal e Avaliação Geral estritamente com base nas metas ativas (> 0)
       const activeRates = [];
       if (goalCriacao > 0 && rateCriacao !== null) activeRates.push(rateCriacao);
       if (goalExportacao > 0 && rateExportacao !== null) activeRates.push(rateExportacao);
@@ -585,7 +905,6 @@ export function ProductionProvider({ children }) {
         else performanceStatus = 'Na Meta';
       }
 
-      // Identificar especialidade dominante para visualização
       const roleLower = (des.role || '').toLowerCase();
       let primaryStage = 'geral';
       if (goalImpressaoPieces > 0 && goalCriacao === 0 && goalExportacao === 0) primaryStage = 'impressao';
@@ -628,25 +947,16 @@ export function ProductionProvider({ children }) {
       return (b.ordersCount || 0) - (a.ordersCount || 0);
     });
 
-    // 1. Cálculo de Lead Time / Tempo de Ciclo entre etapas (da Criação à Impressão)
-    const orderGroups = new Map();
-    entries.forEach((e) => {
-      if (!e.orderNumber) return;
-      const key = e.orderNumber.trim().toLowerCase();
-      if (!orderGroups.has(key)) {
-        orderGroups.set(key, []);
-      }
-      orderGroups.get(key).push(e);
-    });
-
+    // Lead Time e Tempo de Ciclo calculado nos pedidos
     const leadTimeDiffs = [];
     const criacaoToExportDiffs = [];
     let completedCyclesCount = 0;
 
-    orderGroups.forEach((groupEntries) => {
-      const criacaoEntry = groupEntries.find((e) => e.stage === 'criacao' && e.date);
-      const exportacaoEntry = groupEntries.find((e) => e.stage === 'exportacao' && e.date);
-      const impressaoEntry = groupEntries.find((e) => e.stage === 'impressao' && e.date);
+    orders.forEach((ord) => {
+      const orderEntries = ord.entries || [];
+      const criacaoEntry = orderEntries.find((e) => e.stage === 'criacao' && e.date);
+      const exportacaoEntry = orderEntries.find((e) => e.stage === 'exportacao' && e.date);
+      const impressaoEntry = orderEntries.find((e) => e.stage === 'impressao' && e.date);
 
       if (criacaoEntry && impressaoEntry) {
         const dCriacao = new Date(criacaoEntry.date + 'T12:00:00');
@@ -664,22 +974,24 @@ export function ProductionProvider({ children }) {
       }
     });
 
-    const avgLeadTimeDays = leadTimeDiffs.length > 0
-      ? Number((leadTimeDiffs.reduce((a, b) => a + b, 0) / leadTimeDiffs.length).toFixed(1))
-      : null;
+    const avgLeadTimeDays =
+      leadTimeDiffs.length > 0
+        ? Number((leadTimeDiffs.reduce((a, b) => a + b, 0) / leadTimeDiffs.length).toFixed(1))
+        : null;
 
-    const avgDaysToExport = criacaoToExportDiffs.length > 0
-      ? Number((criacaoToExportDiffs.reduce((a, b) => a + b, 0) / criacaoToExportDiffs.length).toFixed(1))
-      : null;
+    const avgDaysToExport =
+      criacaoToExportDiffs.length > 0
+        ? Number((criacaoToExportDiffs.reduce((a, b) => a + b, 0) / criacaoToExportDiffs.length).toFixed(1))
+        : null;
 
     const leadTimeStats = {
       avgLeadTimeDays,
       avgDaysToExport,
       completedCyclesCount,
-      totalTrackedOrders: orderGroups.size
+      totalTrackedOrders: orders.length
     };
 
-    // 2. Linha do Tempo Diária (Evolução por dia de cada etapa no período)
+    // Linha do Tempo Diária
     const timelineMap = new Map();
     const startDate = new Date(dateBounds.start + 'T12:00:00');
     const endDate = new Date(dateBounds.end + 'T12:00:00');
@@ -729,7 +1041,7 @@ export function ProductionProvider({ children }) {
       dates: displayDates
     };
 
-    // 3. Contagem de Tipos de Lançamento (Arte Nova vs Ajuste/Refação vs Reposição)
+    // Contagem de Tipos de Lançamento
     const countArteNova = periodEntries.filter((e) => (e.workType || 'arte_nova') === 'arte_nova').length;
     const countAjuste = periodEntries.filter((e) => e.workType === 'ajuste_refacao').length;
     const countReposicao = periodEntries.filter((e) => e.workType === 'reposicao').length;
@@ -770,45 +1082,71 @@ export function ProductionProvider({ children }) {
       dailyTimeline,
       reworkStats
     };
-  }, [periodEntries, entries, designers, dateBounds, sectorGoals]);
+  }, [periodOrders, periodEntries, orders, designers, dateBounds, sectorGoals]);
 
+  // Exportar dados em CSV
   const exportToCSV = () => {
-    if (!filteredEntries.length) {
+    if (!filteredOrders.length) {
       alert('Nenhum dado encontrado para exportar com os filtros atuais.');
       return;
     }
 
-    const headers = ['ID', 'Data', 'Pedido', 'Cliente', 'Designer', 'Etapa', 'Tipo de Lançamento', 'Peças', 'Metros (m)', 'Tipo de Pedido', 'Complexidade', 'Observações'];
-    const rows = filteredEntries.map((e) => [
-      e.id,
-      e.date,
-      `"${e.orderNumber || ''}"`,
-      `"${(e.clientName || '').replace(/"/g, '""')}"`,
-      `"${e.designerName || ''}"`,
-      STAGES[e.stage]?.name || e.stage,
-      WORK_TYPES[e.workType]?.name || 'Arte Nova',
-      e.piecesCount || 0,
-      e.meters || 0,
-      e.orderType || '',
-      e.complexity || '',
-      `"${(e.notes || '').replace(/"/g, '""')}"`
-    ]);
+    const headers = ['ID Pedido', 'Data', 'Nº Pedido', 'Cliente', 'Qtd Peças', 'Tipo Uniforme', 'Lançamento', 'Etapa', 'Responsável', 'Qtd Produzida', 'Metros (m)', 'Obs'];
+    const rows = [];
+
+    filteredOrders.forEach((ord) => {
+      if (!ord.entries || ord.entries.length === 0) {
+        rows.push([
+          ord.id,
+          ord.date,
+          `"${ord.orderNumber || ''}"`,
+          `"${(ord.clientName || '').replace(/"/g, '""')}"`,
+          ord.totalPieces || 0,
+          ord.orderType || '',
+          WORK_TYPES[ord.workType]?.name || 'Arte Nova',
+          'Sem Lançamento',
+          '—',
+          0,
+          0,
+          `"${(ord.notes || '').replace(/"/g, '""')}"`
+        ]);
+      } else {
+        ord.entries.forEach((ent) => {
+          rows.push([
+            ord.id,
+            ent.date || ord.date,
+            `"${ord.orderNumber || ''}"`,
+            `"${(ord.clientName || '').replace(/"/g, '""')}"`,
+            ord.totalPieces || 0,
+            ord.orderType || '',
+            WORK_TYPES[ent.workType || ord.workType]?.name || 'Arte Nova',
+            STAGES[ent.stage]?.name || ent.stage,
+            `"${ent.designerName || ''}"`,
+            ent.piecesCount || 0,
+            ent.meters || 0,
+            `"${(ent.notes || ord.notes || '').replace(/"/g, '""')}"`
+          ]);
+        });
+      }
+    });
 
     const csvContent = 'data:text/csv;charset=utf-8,\uFEFF' + [headers.join(';'), ...rows.map((r) => r.join(';'))].join('\n');
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `producao_design_uniformes_${periodFilter}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `pedidos_producao_${periodFilter}_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
   };
 
+  // Backup JSON
   const exportToJSON = () => {
     const data = {
-      version: '2.0',
+      version: '3.0',
       exportedAt: new Date().toISOString(),
       designers,
+      orders,
       entries
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
@@ -825,10 +1163,16 @@ export function ProductionProvider({ children }) {
     reader.onload = (e) => {
       try {
         const json = JSON.parse(e.target.result);
-        if (Array.isArray(json.designers) && Array.isArray(json.entries)) {
+        if (Array.isArray(json.designers)) {
           setDesigners(json.designers);
-          setEntries(json.entries);
-          alert('Backup restaurado com sucesso!');
+        }
+        if (Array.isArray(json.orders)) {
+          setOrders(json.orders);
+          alert('Backup com pedidos e lançamentos restaurado com sucesso!');
+        } else if (Array.isArray(json.entries)) {
+          // Migra entradas para pedidos
+          setOrders(groupEntriesIntoOrders(json.entries));
+          alert('Backup restaurado com sucesso (lançamentos agrupados em pedidos)!');
         } else {
           alert('Arquivo JSON com formato inválido.');
         }
@@ -843,8 +1187,11 @@ export function ProductionProvider({ children }) {
     <ProductionContext.Provider
       value={{
         designers,
+        orders,
         entries,
+        periodOrders,
         periodEntries,
+        filteredOrders,
         filteredEntries,
         metrics,
         periodFilter,
@@ -856,12 +1203,24 @@ export function ProductionProvider({ children }) {
         setSelectedStageFilter,
         selectedDesignerFilter,
         setSelectedDesignerFilter,
+        selectedWorkTypeFilter,
+        setSelectedWorkTypeFilter,
         searchTerm,
         setSearchTerm,
+        // Funções de Pedidos
+        addOrder,
+        updateOrder,
+        deleteOrder,
+        // Funções de Lançamentos dentro do Pedido
+        addEntryToOrder,
+        updateEntryInOrder,
+        deleteEntryFromOrder,
+        // Compatibilidade legada
         addEntry,
         updateEntry,
         deleteEntry,
         addBatchEntries,
+        // Designers
         addDesigner,
         updateDesigner,
         deleteDesigner,
@@ -869,8 +1228,22 @@ export function ProductionProvider({ children }) {
         exportToCSV,
         exportToJSON,
         importFromJSON,
+        // Modais de Pedido
         isQuickEntryOpen,
         setIsQuickEntryOpen,
+        editingOrder,
+        setEditingOrder,
+        // Modais de Lançamento no Pedido
+        isStageModalOpen,
+        setIsStageModalOpen,
+        targetOrderForStage,
+        setTargetOrderForStage,
+        editingStageEntry,
+        setEditingStageEntry,
+        initialStageForModal,
+        openAddStageToOrder,
+        openEditStageInOrder,
+        // Outros modais
         isBatchEntryOpen,
         setIsBatchEntryOpen,
         isReportOpen,
@@ -887,14 +1260,7 @@ export function ProductionProvider({ children }) {
         isSupabaseActive,
         isLoadingDB,
         syncLocalToSupabase,
-        refreshFromSupabase,
-        editingEntry,
-        setEditingEntry,
-        advanceStageData,
-        setAdvanceStageData,
-        openAdvanceStage,
-        selectedWorkTypeFilter,
-        setSelectedWorkTypeFilter
+        refreshFromSupabase
       }}
     >
       {children}

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ProductionProvider } from './context/ProductionContext';
+import { ProductionProvider, useProduction } from './context/ProductionContext';
 import { Header } from './components/Header';
 import { PeriodBar } from './components/PeriodBar';
 import { Dashboard } from './components/Dashboard';
@@ -11,11 +11,20 @@ import { ExecutiveReportModal } from './components/ExecutiveReportModal';
 import { BackupModal } from './components/BackupModal';
 import { SupabaseModal } from './components/SupabaseModal';
 import { SectorGoalsModal } from './components/SectorGoalsModal';
+import { StageEntryModal } from './components/StageEntryModal';
 
 export function AppContent() {
   const [activeTab, setActiveTab] = useState('dashboard');
   const [isBackupModalOpen, setIsBackupModalOpen] = useState(false);
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
+
+  const {
+    isStageModalOpen,
+    setIsStageModalOpen,
+    targetOrderForStage,
+    editingStageEntry,
+    initialStageForModal
+  } = useProduction();
 
   return (
     <div className="app-container">
@@ -46,6 +55,13 @@ export function AppContent() {
 
       {/* Modais Globais de Lançamento e Relatórios */}
       <QuickEntryModal />
+      <StageEntryModal
+        isOpen={isStageModalOpen}
+        onClose={() => setIsStageModalOpen(false)}
+        order={targetOrderForStage}
+        entry={editingStageEntry}
+        initialStage={initialStageForModal}
+      />
       <BatchEntryModal />
       <ExecutiveReportModal />
       <BackupModal

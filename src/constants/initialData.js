@@ -70,3 +70,5 @@ export const WORK_TYPES = {
 // Base zerada para inserção dos designers e histórico reais pelo usuário
 export const INITIAL_DESIGNERS = [];
 export const INITIAL_ENTRIES = [];
+export const INITIAL_ORDERS = [];
+
