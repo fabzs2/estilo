@@ -8,10 +8,13 @@ import {
 } from 'lucide-react';
 
 export function ExecutiveReportModal() {
-  const { isReportOpen, setIsReportOpen, metrics, dateBounds } = useProduction();
+  const { isReportOpen, setIsReportOpen, metrics, dateBounds, workingDaysConfig } = useProduction();
   const [copied, setCopied] = useState(false);
 
   if (!isReportOpen) return null;
+
+  const companyName = workingDaysConfig?.companyName || 'Estamparia & Uniformes';
+  const companySub = workingDaysConfig?.companySub || 'Setor de Arte & Impressão';
 
   const handleClose = () => {
     setIsReportOpen(false);
@@ -23,37 +26,38 @@ export function ExecutiveReportModal() {
 
   const todayBR = new Date().toLocaleDateString('pt-BR');
 
-  // Texto formatado pronto para enviar no WhatsApp ou e-mail do chefe
+  // Texto formatado pronto para enviar no WhatsApp ou e-mail da diretoria
   const generateTextMessage = () => {
-    let text = `*RELATÓRIO DE PRODUÇÃO - SETOR DE DESIGN (${dateBounds.label.toUpperCase()})*\n`;
-    text += `📅 Data de Emissão: ${todayBR}\n`;
-    text += `📊 Base de Cálculo: ${metrics.workingDaysCount} dia(s) úteis considerados (${metrics.totalMonthWorkingDays} dias úteis no mês)\n\n`;
-    text += `*RESUMO GERAL POR CATEGORIA:*\n`;
-    text += `• Total de Pedidos Únicos: ${metrics.totalOrders}\n`;
+    let text = `*RELATÓRIO OPERACIONAL — ${companyName.toUpperCase()} (${dateBounds.label.toUpperCase()})*\n`;
+    text += `Setor: ${companySub}\n`;
+    text += `Emissão: ${todayBR} | Base: ${metrics.workingDaysCount}d úteis (${metrics.totalMonthWorkingDays}d no mês)\n\n`;
+    text += `*INDICADORES GERAIS:*\n`;
+    text += `• Pedidos Únicos: ${metrics.totalOrders}\n`;
     text += `• Criação: ${metrics.stageCounts.criacao} artes (Média: ${metrics.teamDailyAvgCriacao}/dia | Meta Diária: ${metrics.teamDailyGoalCriacao} | Meta Mês: ${metrics.monthGoalCriacao})\n`;
     text += `• Exportação: ${metrics.stageCounts.exportacao} fechamentos (Média: ${metrics.teamDailyAvgExportacao}/dia | Meta Diária: ${metrics.teamDailyGoalExportacao} | Meta Mês: ${metrics.monthGoalExportacao})\n`;
     text += `• Impressão: ${metrics.impressaoTotalPieces.toLocaleString('pt-BR')} peças (Média: ${metrics.teamDailyAvgImpressaoPieces}/dia | Meta Diária: ${metrics.teamDailyGoalImpressaoPieces} | Meta Mês: ${metrics.monthGoalImpressaoPieces.toLocaleString('pt-BR')})\n`;
-    text += `• Metragem Rodada (Plotter): ${metrics.totalMeters}m lineares\n`;
-    text += `• Taxa de Refação/Ajustes: ${metrics.reworkStats?.reworkRate || 0}%\n\n`;
-    text += `*DESEMPENHO INDIVIDUAL POR DESIGNER:*\n`;
+    text += `• Metragem Plotter: ${metrics.totalMeters}m lineares\n`;
+    text += `• Índice de Refação: ${metrics.reworkStats?.reworkRate || 0}%\n\n`;
+    text += `*DESEMPENHO POR PROFISSIONAL:*\n`;
 
     metrics.rankedDesigners.forEach((d, idx) => {
-      const pausedTag = d.active === false ? ' [PAUSADO/FÉRIAS]' : '';
+      const pausedTag = d.active === false ? ' [PAUSADO]' : '';
       const absenceTag = d.absenceDays > 0 ? ` (${d.workingDays}d úteis, -${d.absenceDays}d abonado)` : ` (${d.workingDays}d úteis)`;
       text += `${idx + 1}. *${d.name}* (${d.role})${pausedTag}${absenceTag}\n`;
-      text += `   - Entregas no período: ${d.ordersCount} pedidos\n`;
+      text += `   - Pedidos: ${d.ordersCount}\n`;
       if (d.goalCriacaoArtes > 0) {
-        text += `   - 🎨 Criação: ${d.dailyAvgCriacao} artes/dia (Meta: ${d.goalCriacaoArtes}/dia - ${d.rateCriacao}%)\n`;
+        text += `   - Criação: ${d.dailyAvgCriacao}/dia (Meta: ${d.goalCriacaoArtes} | ${d.rateCriacao}%)\n`;
       }
       if (d.goalExportacao > 0) {
-        text += `   - 📐 Exportação: ${d.dailyAvgExportacao} exp/dia (Meta: ${d.goalExportacao}/dia - ${d.rateExportacao}%)\n`;
+        text += `   - Exportação: ${d.dailyAvgExportacao}/dia (Meta: ${d.goalExportacao} | ${d.rateExportacao}%)\n`;
       }
       if (d.goalImpressaoPecas > 0) {
-        text += `   - 🖨️ Impressão: ${d.dailyAvgImpressaoPieces} peças/dia (Meta: ${d.goalImpressaoPecas}/dia - ${d.rateImpressao}%)\n`;
+        text += `   - Impressão: ${d.dailyAvgImpressaoPieces} pçs/dia (Meta: ${d.goalImpressaoPecas} | ${d.rateImpressao}%)\n`;
       }
-      text += `   - Status Geral: ${d.performanceStatus} (${d.goalAchievementRate}% atingido)\n\n`;
+      text += `   - Atingimento: ${d.performanceStatus} (${d.goalAchievementRate}%)\n\n`;
     });
 
+    text += `_Gerado via KromaOPS_`;
     return text;
   };
 
@@ -118,15 +122,15 @@ export function ExecutiveReportModal() {
             }}
           >
             <div>
-              <h2 style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--text-primary)' }}>
-                RELATÓRIO DE DESEMPENHO & MÉDIAS - SETOR DE DESIGN
-              </h2>
-              <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                Fábrica de Uniformes • Metas por Categoria: Criação (Artes), Exportação (Fechamentos) e Impressão (Peças)
+              <div className="mono" style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '2px' }}>
+                {companyName} • {companySub}
               </div>
+              <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                RELATÓRIO EXECUTIVO DE PRODUÇÃO & METAS
+              </h2>
             </div>
-            <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              <div><strong>Período:</strong> {dateBounds.label} ({metrics.workingDaysCount}d úteis / {metrics.totalMonthWorkingDays}d no mês)</div>
+            <div className="mono" style={{ textAlign: 'right', fontSize: '0.73rem', color: 'var(--text-muted)' }}>
+              <div><strong>Período:</strong> {dateBounds.label} ({metrics.workingDaysCount}/{metrics.totalMonthWorkingDays}d úteis)</div>
               <div><strong>Emissão:</strong> {todayBR}</div>
             </div>
           </div>
@@ -269,11 +273,11 @@ export function ExecutiveReportModal() {
             }}
           >
             <div>
-              DesignFlow Uniformes • Relatório de Liderança
+              <strong>{companyName}</strong> • Gerado via <strong>KromaOPS</strong>
             </div>
             <div style={{ textAlign: 'right' }}>
               <div style={{ borderBottom: '1px solid var(--text-muted)', width: '200px', marginBottom: '4px' }} />
-              <div>Liderança do Setor de Design</div>
+              <div>Responsável / Liderança Operacional</div>
             </div>
           </div>
         </div>

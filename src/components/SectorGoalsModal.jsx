@@ -12,7 +12,8 @@ import {
   Calendar,
   Plus,
   Trash2,
-  Sparkles
+  Sparkles,
+  Building2
 } from 'lucide-react';
 
 export function SectorGoalsModal() {
@@ -102,8 +103,8 @@ export function SectorGoalsModal() {
       >
         <div className="modal-header">
           <div className="modal-title">
-            <Target size={18} color="var(--accent-blue)" />
-            Dias Úteis Reais, Feriados & Metas do Setor
+            <Target size={17} color="var(--accent-blue)" />
+            Empresa, Dias Úteis Reais & Metas Operacionais
           </div>
           <button className="btn btn-secondary btn-icon-only btn-sm" onClick={handleClose}>
             <X size={16} />
@@ -111,7 +112,57 @@ export function SectorGoalsModal() {
         </div>
 
         <form onSubmit={handleSave}>
-          <div className="modal-body" style={{ maxHeight: '74vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '18px' }}>
+          <div className="modal-body" style={{ maxHeight: '74vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            {/* SEÇÃO WHITE-LABEL: IDENTIDADE DA EMPRESA / FÁBRICA CLIENTE */}
+            <div
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                padding: '14px 16px'
+              }}
+            >
+              <div style={{ marginBottom: '10px' }}>
+                <h4 style={{ fontSize: '0.83rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                  <Building2 size={14} color="var(--accent-blue)" />
+                  Identidade da Empresa / Fábrica (White-Label)
+                </h4>
+                <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                  Personalize o nome da confecção ou estamparia exibido na barra lateral e nos relatórios impressos.
+                </p>
+              </div>
+
+              <div className="form-grid-2">
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" htmlFor="wl-company-name">
+                    Nome da Empresa / Fábrica:
+                  </label>
+                  <input
+                    id="wl-company-name"
+                    type="text"
+                    className="form-input"
+                    placeholder="Ex: Estilo Uniformes"
+                    value={workingDaysConfig.companyName ?? 'Estamparia & Uniformes'}
+                    onChange={(e) => updateWorkingDaysConfig({ companyName: e.target.value })}
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" htmlFor="wl-company-sub">
+                    Setor / Unidade Operacional:
+                  </label>
+                  <input
+                    id="wl-company-sub"
+                    type="text"
+                    className="form-input"
+                    placeholder="Ex: Setor de Arte & Impressão"
+                    value={workingDaysConfig.companySub ?? 'Setor de Arte & Impressão'}
+                    onChange={(e) => updateWorkingDaysConfig({ companySub: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* SEÇÃO 1: FILTRO DE DIAS ÚTEIS REAIS NA META MENSAL / PERÍODO */}
             <div
               style={{
@@ -224,7 +275,7 @@ export function SectorGoalsModal() {
                     <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-primary)', cursor: 'pointer' }}>
                       <input
                         type="checkbox"
-                        checked={ Boolean(workingDaysConfig.includeSaturday) }
+                        checked={Boolean(workingDaysConfig.includeSaturday)}
                         onChange={(e) => updateWorkingDaysConfig({ includeSaturday: e.target.checked })}
                         style={{ width: '15px', height: '15px', accentColor: '#38bdf8', cursor: 'pointer' }}
                       />

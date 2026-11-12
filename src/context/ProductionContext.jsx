@@ -187,10 +187,12 @@ export function ProductionProvider({ children }) {
     }
   });
 
-  // 4. Configuração de Dias Úteis Reais & Feriados
+  // 4. Configuração de Dias Úteis Reais, Feriados & Identidade White-Label
   const [workingDaysConfig, setWorkingDaysConfig] = useState(() => {
     const defaultHolidays = getBrazilianHolidays(new Date().getFullYear()).map((h) => h.date);
     const defaultConfig = {
+      companyName: 'Estamparia & Uniformes',
+      companySub: 'Setor de Arte & Impressão',
       mode: 'calendar', // 'calendar' (Dias Úteis Reais Seg-Sex - Feriados) | 'registered' (Dias com Lançamento) | 'manual' (Fixo)
       includeSaturday: false,
       holidays: defaultHolidays,
@@ -1672,7 +1674,7 @@ export function ProductionProvider({ children }) {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `pedidos_producao_${periodFilter}_${getLocalDateStr()}.csv`);
+    link.setAttribute('download', `kromaops_producao_${periodFilter}_${getLocalDateStr()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1681,7 +1683,8 @@ export function ProductionProvider({ children }) {
   // Backup JSON
   const exportToJSON = () => {
     const data = {
-      version: '3.2',
+      system: 'KromaOPS',
+      version: '3.3',
       exportedAt: new Date().toISOString(),
       designers,
       orders,
@@ -1693,7 +1696,7 @@ export function ProductionProvider({ children }) {
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `backup_designflow_${getLocalDateStr()}.json`;
+    link.download = `backup_kromaops_${getLocalDateStr()}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };

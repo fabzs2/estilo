@@ -12,7 +12,9 @@ import {
   Trash2,
   SlidersHorizontal,
   Sun,
-  Moon
+  Moon,
+  Building2,
+  Edit3
 } from 'lucide-react';
 
 export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }) {
@@ -25,7 +27,8 @@ export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }
     isSupabaseActive,
     clearAllData,
     metrics,
-    designers
+    designers,
+    workingDaysConfig
   } = useProduction();
 
   const [theme, setTheme] = useState(() => {
@@ -50,17 +53,88 @@ export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }
   };
 
   const activeDesignersCount = designers.filter((d) => d.active !== false).length;
+  const companyName = workingDaysConfig?.companyName || 'Estamparia & Uniformes';
+  const companySub = workingDaysConfig?.companySub || 'Setor de Arte & Impressão';
 
   return (
     <aside className="app-sidebar">
       <div className="sidebar-top">
-        {/* Identidade do Sistema */}
-        <div className="sidebar-brand">
-          <div className="brand-mark">DF</div>
-          <div className="brand-text-wrap">
-            <div className="brand-name">DesignFlow</div>
-            <div className="brand-sub">Estúdio & Produção</div>
+        {/* Identidade da Plataforma KromaOPS + Empresa Cliente (White-Label) */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div className="sidebar-brand">
+            <div className="brand-mark">KR</div>
+            <div className="brand-text-wrap">
+              <div className="brand-name">
+                Kroma<span style={{ color: 'var(--accent-blue)', fontWeight: 700 }}>OPS</span>
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: '0.58rem',
+                    padding: '1px 4px',
+                    borderRadius: '3px',
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-muted)',
+                    fontWeight: 600
+                  }}
+                >
+                  PRO
+                </span>
+              </div>
+              <div className="brand-sub">Production OS</div>
+            </div>
           </div>
+
+          {/* Card White-Label da Empresa / Fábrica Cliente */}
+          <button
+            type="button"
+            onClick={() => setIsSectorGoalsModalOpen(true)}
+            title="Clique para personalizar o nome da empresa/fábrica cliente (Modo White-Label)"
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px',
+              width: '100%',
+              padding: '7px 10px',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)',
+              cursor: 'pointer',
+              textAlign: 'left',
+              transition: 'border-color var(--trans-fast)'
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+              <Building2 size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: '0.76rem',
+                    fontWeight: 600,
+                    color: 'var(--text-primary)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}
+                >
+                  {companyName}
+                </div>
+                <div
+                  style={{
+                    fontSize: '0.66rem',
+                    color: 'var(--text-muted)',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis'
+                  }}
+                >
+                  {companySub}
+                </div>
+              </div>
+            </div>
+            <Edit3 size={11} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+          </button>
         </div>
 
         {/* Ações de Lançamento */}
@@ -141,7 +215,7 @@ export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }
             >
               <span className="sidebar-nav-item-left">
                 <SlidersHorizontal size={15} />
-                Dias Úteis & Metas
+                Empresa, Dias & Metas
               </span>
               <span className="sidebar-counter">{metrics.workingDaysCount}d</span>
             </button>

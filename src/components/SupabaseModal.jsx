@@ -97,7 +97,7 @@ export function SupabaseModal({ isOpen, onClose }) {
 
   const handleCopySQL = () => {
     const sql = `-- ==========================================================
--- DESIGNFLOW UNIFORMES - SCRIPT SQL COMPLETO PARA SUPABASE
+-- KROMAOPS - SCRIPT SQL COMPLETO PARA SUPABASE
 -- Execute este script no SQL Editor do seu projeto Supabase
 -- ==========================================================
 
