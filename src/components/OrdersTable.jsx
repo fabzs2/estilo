@@ -189,11 +189,11 @@ export function OrdersTable() {
     Boolean(searchTerm);
 
   const queuePills = [
-    { id: 'all', label: 'Todos na Fila', count: queueStatusCounts?.all || 0, color: 'var(--text-primary)' },
-    { id: 'aguardando_arte', label: '⏳ Aguardando Arte', count: queueStatusCounts?.aguardando_arte || 0, color: '#94a3b8' },
-    { id: 'falta_exportar', label: '📐 Falta Exportar', count: queueStatusCounts?.falta_exportar || 0, color: '#60a5fa' },
-    { id: 'falta_imprimir', label: '🖨️ Pronto p/ Imprimir', count: queueStatusCounts?.falta_imprimir || 0, color: '#a78bfa' },
-    { id: 'concluido', label: '✅ 100% Concluídos', count: queueStatusCounts?.concluido || 0, color: '#34d399' }
+    { id: 'all', label: 'Todos na Fila', count: queueStatusCounts?.all || 0, color: 'var(--text-primary)', dot: null },
+    { id: 'aguardando_arte', label: 'Aguardando Arte', count: queueStatusCounts?.aguardando_arte || 0, color: 'var(--text-secondary)', dot: '#71717a' },
+    { id: 'falta_exportar', label: 'Falta Exportar', count: queueStatusCounts?.falta_exportar || 0, color: '#3b82f6', dot: '#3b82f6' },
+    { id: 'falta_imprimir', label: 'Pronto p/ Imprimir', count: queueStatusCounts?.falta_imprimir || 0, color: '#8b5cf6', dot: '#8b5cf6' },
+    { id: 'concluido', label: 'Concluídos', count: queueStatusCounts?.concluido || 0, color: '#10b981', dot: '#10b981' }
   ];
 
   return (
@@ -203,13 +203,13 @@ export function OrdersTable() {
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '8px',
+          gap: '6px',
           marginBottom: '12px',
           flexWrap: 'wrap'
         }}
       >
-        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginRight: '4px' }}>
-          Fila de Produção:
+        <span style={{ fontSize: '0.73rem', fontWeight: 600, color: 'var(--text-muted)', marginRight: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Fila:
         </span>
         {queuePills.map((pill) => {
           const isActive = selectedQueueStatusFilter === pill.id;
@@ -221,27 +221,30 @@ export function OrdersTable() {
               style={{
                 display: 'inline-flex',
                 alignItems: 'center',
-                gap: '6px',
-                padding: '6px 12px',
+                gap: '7px',
+                padding: '5px 11px',
                 borderRadius: 'var(--radius-md)',
-                fontSize: '0.76rem',
-                fontWeight: isActive ? 700 : 500,
+                fontSize: '0.75rem',
+                fontWeight: isActive ? 600 : 500,
                 background: isActive ? 'var(--bg-surface-elevated)' : 'var(--bg-secondary)',
-                border: isActive ? `1px solid ${pill.color}` : '1px solid var(--border-subtle)',
-                color: isActive ? pill.color : 'var(--text-secondary)',
+                border: isActive ? '1px solid var(--border-light)' : '1px solid var(--border-subtle)',
+                color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
                 cursor: 'pointer',
                 transition: 'var(--trans-fast)'
               }}
             >
+              {pill.dot && <span className="status-dot" style={{ background: pill.dot }} />}
               <span>{pill.label}</span>
               <span
+                className="mono"
                 style={{
                   fontSize: '0.68rem',
-                  fontWeight: 700,
-                  padding: '1px 6px',
-                  borderRadius: '999px',
-                  background: isActive ? 'rgba(255,255,255,0.08)' : 'var(--bg-surface)',
-                  color: isActive ? pill.color : 'var(--text-muted)'
+                  fontWeight: 600,
+                  padding: '0px 5px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: isActive ? 'var(--bg-primary)' : 'var(--bg-surface)',
+                  color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                  border: '1px solid var(--border-subtle)'
                 }}
               >
                 {pill.count}
@@ -310,10 +313,10 @@ export function OrdersTable() {
             value={selectedStageFilter}
             onChange={(e) => setSelectedStageFilter(e.target.value)}
           >
-            <option value="all">Qualquer Etapa Feita</option>
-            <option value="criacao">🎨 Com Criação</option>
-            <option value="exportacao">📐 Com Exportação</option>
-            <option value="impressao">🖨️ Com Impressão</option>
+            <option value="all">Qualquer Etapa</option>
+            <option value="criacao">Com Criação</option>
+            <option value="exportacao">Com Exportação</option>
+            <option value="impressao">Com Impressão</option>
           </select>
 
           {/* Filtro por Tipo de Lançamento */}
@@ -378,26 +381,29 @@ export function OrdersTable() {
             background: 'var(--bg-surface)'
           }}
         >
-          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
             <span>
-              Exibindo <strong style={{ color: 'var(--text-primary)' }}>{filteredTotals.ordersCount}</strong> pedido(s)
+              Exibindo <strong className="mono" style={{ color: 'var(--text-primary)' }}>{filteredTotals.ordersCount}</strong> pedido(s)
             </span>
-            <span>•</span>
+            <span>·</span>
             <span>
-              Total Peças: <strong style={{ color: 'var(--text-primary)' }}>{filteredTotals.totalPieces.toLocaleString('pt-BR')} pçs</strong>
+              Peças: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{filteredTotals.totalPieces.toLocaleString('pt-BR')}</strong>
             </span>
-            <span>•</span>
-            <span style={{ color: '#60a5fa' }}>
-              🎨 Artes: <strong>{filteredTotals.artesCount}</strong>
+            <span>·</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+              <span className="status-dot" style={{ background: '#3b82f6', width: '5px', height: '5px' }} />
+              Artes: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{filteredTotals.artesCount}</strong>
             </span>
-            <span>•</span>
-            <span style={{ color: '#a78bfa' }}>
-              📐 Fechamentos: <strong>{filteredTotals.exportacoesCount}</strong>
+            <span>·</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+              <span className="status-dot" style={{ background: '#8b5cf6', width: '5px', height: '5px' }} />
+              Fechamentos: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{filteredTotals.exportacoesCount}</strong>
             </span>
-            <span>•</span>
-            <span style={{ color: '#34d399' }}>
-              🖨️ Impressas: <strong>{filteredTotals.printedPieces.toLocaleString('pt-BR')} pçs</strong>
-              {filteredTotals.totalMeters > 0 && ` (${filteredTotals.totalMeters}m)`}
+            <span>·</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+              <span className="status-dot" style={{ background: '#10b981', width: '5px', height: '5px' }} />
+              Impressas: <strong className="mono" style={{ color: 'var(--text-primary)' }}>{filteredTotals.printedPieces.toLocaleString('pt-BR')} pçs</strong>
+              {filteredTotals.totalMeters > 0 && <span className="mono">({filteredTotals.totalMeters}m)</span>}
             </span>
           </div>
 
@@ -552,26 +558,23 @@ export function OrdersTable() {
                         </td>
 
                         {/* Data */}
-                        <td style={{ whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '0.75rem' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <Calendar size={12} color="var(--text-muted)" />
-                            {formatDateBR(order.date)}
-                          </div>
+                        <td className="mono" style={{ whiteSpace: 'nowrap', color: 'var(--text-muted)', fontSize: '0.74rem' }}>
+                          {formatDateBR(order.date)}
                         </td>
 
                         {/* Pedido */}
                         <td>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
                             <span
+                              className="order-code-badge"
                               style={{
-                                fontFamily: 'monospace',
-                                fontWeight: 700,
+                                fontWeight: 600,
                                 color: 'var(--text-primary)',
                                 background: 'var(--bg-surface)',
                                 padding: '2px 7px',
                                 borderRadius: 'var(--radius-sm)',
                                 border: '1px solid var(--border-subtle)',
-                                fontSize: '0.8rem'
+                                fontSize: '0.77rem'
                               }}
                             >
                               {order.orderNumber}
@@ -859,15 +862,12 @@ export function OrdersTable() {
                               }}
                             >
                               {/* Header da Gaveta */}
-                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
-                                <div>
-                                  <span style={{ fontSize: '0.8rem', fontWeight: 700, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                                    <FileText size={14} color="var(--accent-blue)" />
-                                    Lançamentos Internos do Pedido {order.orderNumber} ({order.clientName})
+                              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                                  <FileText size={13} color="var(--text-muted)" />
+                                  <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                    Histórico de Etapas — <span className="mono">{order.orderNumber}</span> ({order.clientName})
                                   </span>
-                                  <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-                                    Aqui estão registradas as etapas de quem fez, quando fez e quanto produziu neste pedido.
-                                  </div>
                                 </div>
 
                                 <button
@@ -877,7 +877,7 @@ export function OrdersTable() {
                                   onClick={() => openAddStageToOrder(order, 'criacao')}
                                 >
                                   <Plus size={12} />
-                                  + Adicionar Lançamento
+                                  Adicionar Etapa
                                 </button>
                               </div>
 

@@ -29,8 +29,8 @@ export function AppContent() {
   } = useProduction();
 
   return (
-    <div className="app-container">
-      {/* Barra de Navegação e Topbar */}
+    <div className="app-shell">
+      {/* Sidebar Lateral Fixa */}
       <Header
         activeTab={activeTab}
         setActiveTab={setActiveTab}
@@ -38,23 +38,25 @@ export function AppContent() {
         onOpenSupabase={() => setIsSupabaseModalOpen(true)}
       />
 
-      {/* Conteúdo Principal */}
-      <main className="main-content">
-        {/* Barra de Seleção de Período (visível no Dashboard e em Pedidos) */}
-        {(activeTab === 'dashboard' || activeTab === 'orders') && <PeriodBar />}
+      {/* Área de Trabalho Principal */}
+      <div className="app-workspace">
+        <main className="main-content">
+          {/* Barra de Seleção de Período (visível no Dashboard e em Pedidos) */}
+          {(activeTab === 'dashboard' || activeTab === 'orders') && <PeriodBar />}
 
-        {/* Telas Dinâmicas */}
-        {activeTab === 'dashboard' && (
-          <Dashboard
-            onSelectDesigner={() => setActiveTab('orders')}
-            onGoToTeam={() => setActiveTab('team')}
-          />
-        )}
+          {/* Telas Dinâmicas */}
+          {activeTab === 'dashboard' && (
+            <Dashboard
+              onSelectDesigner={() => setActiveTab('orders')}
+              onGoToTeam={() => setActiveTab('team')}
+            />
+          )}
 
-        {activeTab === 'orders' && <OrdersTable />}
+          {activeTab === 'orders' && <OrdersTable />}
 
-        {activeTab === 'team' && <TeamManagement />}
-      </main>
+          {activeTab === 'team' && <TeamManagement />}
+        </main>
+      </div>
 
       {/* Modais Globais de Lançamento e Relatórios */}
       <QuickEntryModal />

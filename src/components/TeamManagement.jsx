@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { useProduction } from '../context/ProductionContext';
 import {
-  Users,
   UserPlus,
   Edit3,
   Trash2,
@@ -111,35 +110,30 @@ export function TeamManagement() {
       {/* Cabeçalho da Seção de Equipe */}
       <div
         style={{
-          background: 'var(--bg-secondary)',
-          border: '1px solid var(--border-subtle)',
-          borderRadius: 'var(--radius-lg)',
-          padding: '16px 20px',
-          marginBottom: '20px',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'space-between',
+          marginBottom: '16px',
           flexWrap: 'wrap',
           gap: '12px'
         }}
       >
         <div>
-          <h2 style={{ fontSize: '1.15rem', fontWeight: 600, display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <Users size={18} color="var(--text-muted)" />
-            Equipe de Designers & Metas por Categoria
+          <h2 style={{ fontSize: '1.05rem', fontWeight: 600, letterSpacing: '-0.02em' }}>
+            Equipe & Metas Individuais
           </h2>
-          <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-            Metas específicas: <strong>Criação</strong> (artes diárias), <strong>Exportação</strong> (exportações diárias), <strong>Impressão</strong> (peças impressas) e abono de folgas/férias.
+          <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+            Metas diárias por etapa e controle de folgas abonadas no período
           </p>
         </div>
 
         <button
           id="btn-add-designer"
-          className="btn btn-primary"
+          className="btn btn-primary btn-sm"
           onClick={handleOpenNew}
         >
           <UserPlus size={14} />
-          + Novo Designer
+          Novo Profissional
         </button>
       </div>
 
@@ -254,53 +248,53 @@ export function TeamManagement() {
                   <div className="form-grid-3">
                     <div className="form-group">
                       <label className="form-label" htmlFor="des-goal-criacao">
-                        🎨 Criação:
+                        Criação (Artes/dia):
                       </label>
                       <input
                         id="des-goal-criacao"
                         type="number"
                         min="0"
-                        className="form-input"
+                        className="form-input mono"
                         placeholder="Ex: 8"
                         value={formData.goalCriacaoArtes}
                         onChange={(e) => setFormData({ ...formData, goalCriacaoArtes: Number(e.target.value) })}
                         required
                       />
-                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>artes diárias (0 se não cria)</span>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>0 se não cria</span>
                     </div>
 
                     <div className="form-group">
                       <label className="form-label" htmlFor="des-goal-exportacao">
-                        📐 Exportação:
+                        Exportação (Exp/dia):
                       </label>
                       <input
                         id="des-goal-exportacao"
                         type="number"
                         min="0"
-                        className="form-input"
+                        className="form-input mono"
                         placeholder="Ex: 10"
                         value={formData.goalExportacao}
                         onChange={(e) => setFormData({ ...formData, goalExportacao: Number(e.target.value) })}
                         required
                       />
-                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>exportações/dia (0 se não fecha)</span>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>0 se não fecha</span>
                     </div>
 
                     <div className="form-group">
                       <label className="form-label" htmlFor="des-goal-impressao">
-                        🖨️ Impressão:
+                        Impressão (Peças/dia):
                       </label>
                       <input
                         id="des-goal-impressao"
                         type="number"
                         min="0"
-                        className="form-input"
+                        className="form-input mono"
                         placeholder="Ex: 120"
                         value={formData.goalImpressaoPecas}
                         onChange={(e) => setFormData({ ...formData, goalImpressaoPecas: Number(e.target.value) })}
                         required
                       />
-                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>peças impressas/dia (0 se não imprime)</span>
+                      <span style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>0 se não imprime</span>
                     </div>
                   </div>
                 </div>
@@ -442,29 +436,29 @@ export function TeamManagement() {
                   }}
                 >
                   <div>
-                    <div style={{ fontSize: '0.68rem', color: '#60a5fa', fontWeight: 600 }}>Criação</div>
-                    <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Criação</div>
+                    <div className="mono" style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                       {stats ? stats.dailyAvgCriacao : 0}
                     </div>
-                    <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+                    <div className="mono" style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>
                       {stats?.rateCriacao !== null ? `${stats.rateCriacao}% meta` : 'artes/dia'}
                     </div>
                   </div>
-                  <div>
-                    <div style={{ fontSize: '0.68rem', color: '#a78bfa', fontWeight: 600 }}>Exportação</div>
-                    <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                  <div style={{ borderLeft: '1px solid var(--border-subtle)', borderRight: '1px solid var(--border-subtle)' }}>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Exportação</div>
+                    <div className="mono" style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                       {stats ? stats.dailyAvgExportacao : 0}
                     </div>
-                    <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+                    <div className="mono" style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>
                       {stats?.rateExportacao !== null ? `${stats.rateExportacao}% meta` : 'exp/dia'}
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: '0.68rem', color: '#34d399', fontWeight: 600 }}>Impressão</div>
-                    <div style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
+                    <div style={{ fontSize: '0.68rem', color: 'var(--text-secondary)', fontWeight: 600 }}>Impressão</div>
+                    <div className="mono" style={{ fontSize: '1.05rem', fontWeight: 700, color: 'var(--text-primary)' }}>
                       {stats ? stats.dailyAvgImpressaoPieces : 0}
                     </div>
-                    <div style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>
+                    <div className="mono" style={{ fontSize: '0.62rem', color: 'var(--text-muted)' }}>
                       {stats?.rateImpressao !== null ? `${stats.rateImpressao}% meta` : 'peças/dia'}
                     </div>
                   </div>

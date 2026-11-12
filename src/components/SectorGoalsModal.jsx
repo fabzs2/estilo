@@ -141,15 +141,15 @@ export function SectorGoalsModal() {
                   style={{
                     padding: '10px',
                     borderRadius: 'var(--radius-sm)',
-                    border: workingDaysConfig.mode === 'calendar' ? '2px solid #38bdf8' : '1px solid var(--border-subtle)',
-                    background: workingDaysConfig.mode === 'calendar' ? 'rgba(56, 189, 248, 0.1)' : 'var(--bg-secondary)',
-                    color: workingDaysConfig.mode === 'calendar' ? '#38bdf8' : 'var(--text-secondary)',
+                    border: workingDaysConfig.mode === 'calendar' ? '1px solid var(--text-primary)' : '1px solid var(--border-subtle)',
+                    background: workingDaysConfig.mode === 'calendar' ? 'var(--bg-surface-elevated)' : 'var(--bg-secondary)',
+                    color: workingDaysConfig.mode === 'calendar' ? 'var(--text-primary)' : 'var(--text-secondary)',
                     textAlign: 'left',
                     cursor: 'pointer'
                   }}
                 >
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, marginBottom: '2px' }}>
-                    📅 Calendário Real
+                  <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '2px' }}>
+                    Calendário Real
                   </div>
                   <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>
                     Seg a Sex (desconta fins de semana e feriados)
@@ -162,15 +162,15 @@ export function SectorGoalsModal() {
                   style={{
                     padding: '10px',
                     borderRadius: 'var(--radius-sm)',
-                    border: workingDaysConfig.mode === 'registered' ? '2px solid #a78bfa' : '1px solid var(--border-subtle)',
-                    background: workingDaysConfig.mode === 'registered' ? 'rgba(167, 139, 250, 0.1)' : 'var(--bg-secondary)',
-                    color: workingDaysConfig.mode === 'registered' ? '#a78bfa' : 'var(--text-secondary)',
+                    border: workingDaysConfig.mode === 'registered' ? '1px solid var(--text-primary)' : '1px solid var(--border-subtle)',
+                    background: workingDaysConfig.mode === 'registered' ? 'var(--bg-surface-elevated)' : 'var(--bg-secondary)',
+                    color: workingDaysConfig.mode === 'registered' ? 'var(--text-primary)' : 'var(--text-secondary)',
                     textAlign: 'left',
                     cursor: 'pointer'
                   }}
                 >
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, marginBottom: '2px' }}>
-                    📊 Dias c/ Lançamento
+                  <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '2px' }}>
+                    Dias c/ Lançamento
                   </div>
                   <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>
                     Conta só os dias em que houve pedido lançado
@@ -183,15 +183,15 @@ export function SectorGoalsModal() {
                   style={{
                     padding: '10px',
                     borderRadius: 'var(--radius-sm)',
-                    border: workingDaysConfig.mode === 'manual' ? '2px solid #34d399' : '1px solid var(--border-subtle)',
-                    background: workingDaysConfig.mode === 'manual' ? 'rgba(52, 211, 153, 0.1)' : 'var(--bg-secondary)',
-                    color: workingDaysConfig.mode === 'manual' ? '#34d399' : 'var(--text-secondary)',
+                    border: workingDaysConfig.mode === 'manual' ? '1px solid var(--text-primary)' : '1px solid var(--border-subtle)',
+                    background: workingDaysConfig.mode === 'manual' ? 'var(--bg-surface-elevated)' : 'var(--bg-secondary)',
+                    color: workingDaysConfig.mode === 'manual' ? 'var(--text-primary)' : 'var(--text-secondary)',
                     textAlign: 'left',
                     cursor: 'pointer'
                   }}
                 >
-                  <div style={{ fontSize: '0.78rem', fontWeight: 700, marginBottom: '2px' }}>
-                    ✏️ Fixo / Manual
+                  <div style={{ fontSize: '0.78rem', fontWeight: 600, marginBottom: '2px' }}>
+                    Fixo / Manual
                   </div>
                   <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', lineHeight: 1.3 }}>
                     Você digita o nº exato de dias úteis (ex: 21d)
@@ -240,7 +240,7 @@ export function SectorGoalsModal() {
                   <div style={{ background: 'var(--bg-secondary)', padding: '12px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)' }}>
                     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
                       <span style={{ fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                        🏖️ Feriados & Dias sem Expediente (Descontados da Meta):
+                        Feriados & Dias sem Expediente (Descontados da Meta):
                       </span>
                       <div style={{ display: 'flex', gap: '6px' }}>
                         <button
@@ -356,18 +356,18 @@ export function SectorGoalsModal() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '6px' }}>
                   <label htmlFor="sec-goal-criacao" style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <PenTool size={14} color="#60a5fa" />
-                    🎨 Meta Diária de Criação de Arte:
+                    <PenTool size={14} color="#3b82f6" />
+                    Meta Diária de Criação de Arte:
                   </label>
-                  <span style={{ fontSize: '0.72rem', color: '#60a5fa', fontWeight: 600 }}>
-                    Meta Mensal ({effectiveMonthDays}d úteis): {projectedMonthCriacao} artes/mês
+                  <span className="mono" style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                    Meta Mensal ({effectiveMonthDays}d): {projectedMonthCriacao} artes
                   </span>
                 </div>
                 <input
                   id="sec-goal-criacao"
                   type="number"
                   min="0"
-                  className="form-input"
+                  className="form-input mono"
                   value={formGoals.criacao}
                   onChange={(e) => setFormGoals({ ...formGoals, criacao: e.target.value })}
                   required
@@ -388,18 +388,18 @@ export function SectorGoalsModal() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '6px' }}>
                   <label htmlFor="sec-goal-exportacao" style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Layers size={14} color="#a78bfa" />
-                    📐 Meta Diária de Exportação / Fechamento:
+                    <Layers size={14} color="#8b5cf6" />
+                    Meta Diária de Exportação / Fechamento:
                   </label>
-                  <span style={{ fontSize: '0.72rem', color: '#a78bfa', fontWeight: 600 }}>
-                    Meta Mensal ({effectiveMonthDays}d úteis): {projectedMonthExportacao} exp/mês
+                  <span className="mono" style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                    Meta Mensal ({effectiveMonthDays}d): {projectedMonthExportacao} exp
                   </span>
                 </div>
                 <input
                   id="sec-goal-exportacao"
                   type="number"
                   min="0"
-                  className="form-input"
+                  className="form-input mono"
                   value={formGoals.exportacao}
                   onChange={(e) => setFormGoals({ ...formGoals, exportacao: e.target.value })}
                   required
@@ -420,18 +420,18 @@ export function SectorGoalsModal() {
               >
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '6px' }}>
                   <label htmlFor="sec-goal-impressao" style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <Printer size={14} color="#34d399" />
-                    🖨️ Meta Diária de Impressão / Plotter:
+                    <Printer size={14} color="#10b981" />
+                    Meta Diária de Impressão / Plotter:
                   </label>
-                  <span style={{ fontSize: '0.72rem', color: '#34d399', fontWeight: 600 }}>
-                    Meta Mensal ({effectiveMonthDays}d úteis): {projectedMonthImpressao.toLocaleString('pt-BR')} peças/mês
+                  <span className="mono" style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', fontWeight: 600 }}>
+                    Meta Mensal ({effectiveMonthDays}d): {projectedMonthImpressao.toLocaleString('pt-BR')} peças
                   </span>
                 </div>
                 <input
                   id="sec-goal-impressao"
                   type="number"
                   min="0"
-                  className="form-input"
+                  className="form-input mono"
                   value={formGoals.impressao}
                   onChange={(e) => setFormGoals({ ...formGoals, impressao: e.target.value })}
                   required
