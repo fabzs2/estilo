@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo, useCallback } from 'react';
+import confetti from 'canvas-confetti';
 import {
   INITIAL_DESIGNERS,
   INITIAL_ORDERS,
@@ -35,6 +36,22 @@ const STORAGE_KEYS = {
   WORKING_DAYS: 'designflow_working_days_config'
 };
 
+const SYS_CONFIG_ENTRY_ID = '__designflow_system_config__';
+const SYS_CONFIG_STAGE = '__sys_config__';
+
+// Identifica o status da fila de produção de um pedido
+export function getOrderQueueStatus(order) {
+  const orderEntries = order?.entries || [];
+  const hasCriacao = orderEntries.some((e) => e.stage === 'criacao');
+  const hasExportacao = orderEntries.some((e) => e.stage === 'exportacao');
+  const hasImpressao = orderEntries.some((e) => e.stage === 'impressao');
+
+  if (hasImpressao) return 'concluido';
+  if (hasExportacao) return 'falta_imprimir';
+  if (hasCriacao) return 'falta_exportar';
+  return 'aguardando_arte';
+}
+
 // Função de migração segura: Agrupa lançamentos legados pelo número do pedido
 function groupEntriesIntoOrders(flatEntries) {
   if (!Array.isArray(flatEntries) || flatEntries.length === 0) return [];
@@ -42,6 +59,11 @@ function groupEntriesIntoOrders(flatEntries) {
   const orderMap = new Map();
 
   flatEntries.forEach((entry, idx) => {
+    // Ignora linha reservada de configuração do sistema
+    if (entry.id === SYS_CONFIG_ENTRY_ID || entry.stage === SYS_CONFIG_STAGE || entry.orderNumber === '__SYS_CONFIG__') {
+      return;
+    }
+
     const rawNumber = (entry.orderNumber || '').trim();
     const key = rawNumber ? rawNumber.toLowerCase() : `ord_leg_${entry.id || idx}`;
 
@@ -95,6 +117,33 @@ function groupEntriesIntoOrders(flatEntries) {
 export function ProductionProvider({ children }) {
   const [isSupabaseActive] = useState(() => isSupabaseConfigured());
   const [isLoadingDB, setIsLoadingDB] = useState(false);
+  const [toastNotice, setToastNotice] = useState(null);
+
+  const showToast = useCallback((message, type = 'success') => {
+    setToastNotice({ message, type, id: Date.now() });
+  }, []);
+
+  useEffect(() => {
+    if (!toastNotice) return;
+    const timer = setTimeout(() => setToastNotice(null), 4000);
+    return () => clearTimeout(timer);
+  }, [toastNotice]);
+
+  const fireCelebrationConfetti = useCallback((message) => {
+    try {
+      confetti({
+        particleCount: 70,
+        spread: 65,
+        origin: { y: 0.7 },
+        colors: ['#38bdf8', '#a78bfa', '#34d399', '#fbbf24']
+      });
+    } catch {
+      // Ignora caso canvas não esteja disponível
+    }
+    if (message) {
+      showToast(message, 'celebration');
+    }
+  }, [showToast]);
 
   // 1. Designers
   const [designers, setDesigners] = useState(() => {
@@ -128,7 +177,17 @@ export function ProductionProvider({ children }) {
     }
   });
 
-  // 3. Configuração de Dias Úteis Reais & Feriados
+  // 3. Metas Globais do Setor
+  const [sectorGoals, setSectorGoals] = useState(() => {
+    try {
+      const saved = localStorage.getItem('designflow_sector_goals');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  // 4. Configuração de Dias Úteis Reais & Feriados
   const [workingDaysConfig, setWorkingDaysConfig] = useState(() => {
     const defaultHolidays = getBrazilianHolidays(new Date().getFullYear()).map((h) => h.date);
     const defaultConfig = {
@@ -155,6 +214,39 @@ export function ProductionProvider({ children }) {
     }
   });
 
+  // Persiste configurações globais (Dias Úteis, Feriados, Folgas e Metas do Setor) no Supabase sem precisar de nova tabela
+  const persistSystemConfigToSupabase = useCallback(
+    async (nextWorkingDaysConfig, nextSectorGoals) => {
+      if (!isSupabaseActive || !supabase) return;
+      try {
+        const configPayload = {
+          workingDaysConfig: nextWorkingDaysConfig,
+          sectorGoals: nextSectorGoals,
+          updatedAt: new Date().toISOString()
+        };
+        await supabase.from('production_entries').upsert(
+          mapEntryToDB({
+            id: SYS_CONFIG_ENTRY_ID,
+            orderNumber: '__SYS_CONFIG__',
+            clientName: 'SYSTEM_CONFIG',
+            designerId: null,
+            designerName: null,
+            stage: SYS_CONFIG_STAGE,
+            date: '2000-01-01',
+            piecesCount: 0,
+            meters: 0,
+            orderType: 'sublimacao_total',
+            workType: 'arte_nova',
+            notes: JSON.stringify(configPayload)
+          })
+        );
+      } catch (err) {
+        console.error('Erro ao sincronizar configurações do setor no Supabase:', err);
+      }
+    },
+    [isSupabaseActive]
+  );
+
   const updateWorkingDaysConfig = (partial) => {
     setWorkingDaysConfig((prev) => {
       const next = { ...prev, ...partial };
@@ -163,6 +255,7 @@ export function ProductionProvider({ children }) {
       } catch {
         // Ignora erro de quota
       }
+      persistSystemConfigToSupabase(next, sectorGoals);
       return next;
     });
   };
@@ -178,6 +271,7 @@ export function ProductionProvider({ children }) {
       } catch {
         // Ignora
       }
+      persistSystemConfigToSupabase(next, sectorGoals);
       return next;
     });
   };
@@ -191,6 +285,7 @@ export function ProductionProvider({ children }) {
       } catch {
         // Ignora
       }
+      persistSystemConfigToSupabase(next, sectorGoals);
       return next;
     });
   };
@@ -210,9 +305,67 @@ export function ProductionProvider({ children }) {
       } catch {
         // Ignora
       }
+      persistSystemConfigToSupabase(next, sectorGoals);
       return next;
     });
   };
+
+  const updateSectorGoals = (newGoals) => {
+    setSectorGoals(newGoals);
+    try {
+      localStorage.setItem('designflow_sector_goals', JSON.stringify(newGoals));
+    } catch {
+      // Ignora
+    }
+    persistSystemConfigToSupabase(workingDaysConfig, newGoals);
+  };
+
+  const resetSectorGoals = () => {
+    setSectorGoals(null);
+    try {
+      localStorage.removeItem('designflow_sector_goals');
+    } catch {
+      // Ignora
+    }
+    persistSystemConfigToSupabase(workingDaysConfig, null);
+  };
+
+  // Aplica configurações vindas do registro especial do Supabase
+  const applyRemoteConfigIfPresent = useCallback((rawEntries) => {
+    const sysRow = rawEntries.find(
+      (r) => r.id === SYS_CONFIG_ENTRY_ID || r.stage === SYS_CONFIG_STAGE || r.order_number === '__SYS_CONFIG__'
+    );
+    if (sysRow && sysRow.notes) {
+      try {
+        const parsed = JSON.parse(sysRow.notes);
+        if (parsed.workingDaysConfig) {
+          setWorkingDaysConfig((prev) => {
+            const merged = { ...prev, ...parsed.workingDaysConfig };
+            try {
+              localStorage.setItem(STORAGE_KEYS.WORKING_DAYS, JSON.stringify(merged));
+            } catch {
+              // Ignora
+            }
+            return merged;
+          });
+        }
+        if (parsed.sectorGoals !== undefined) {
+          setSectorGoals(parsed.sectorGoals);
+          try {
+            if (parsed.sectorGoals) {
+              localStorage.setItem('designflow_sector_goals', JSON.stringify(parsed.sectorGoals));
+            } else {
+              localStorage.removeItem('designflow_sector_goals');
+            }
+          } catch {
+            // Ignora
+          }
+        }
+      } catch {
+        // Ignora caso não seja JSON válido
+      }
+    }
+  }, []);
 
   // Carregar dados remotos do Supabase se configurado
   useEffect(() => {
@@ -238,6 +391,7 @@ export function ProductionProvider({ children }) {
           .order('date', { ascending: false });
 
         if (!entError && dbEntries && dbEntries.length > 0) {
+          applyRemoteConfigIfPresent(dbEntries);
           const mappedEntries = dbEntries.map(mapEntryFromDB);
           const groupedOrders = groupEntriesIntoOrders(mappedEntries);
           setOrders(groupedOrders);
@@ -250,7 +404,7 @@ export function ProductionProvider({ children }) {
     }
 
     loadFromSupabase();
-  }, [isSupabaseActive]);
+  }, [isSupabaseActive, applyRemoteConfigIfPresent]);
 
   // Lista plana de lançamentos (derivada de todos os pedidos)
   const entries = useMemo(() => {
@@ -298,6 +452,7 @@ export function ProductionProvider({ children }) {
 
   // Filtros secundários
   const [selectedStageFilter, setSelectedStageFilter] = useState('all');
+  const [selectedQueueStatusFilter, setSelectedQueueStatusFilter] = useState('all');
   const [selectedDesignerFilter, setSelectedDesignerFilter] = useState('all');
   const [selectedWorkTypeFilter, setSelectedWorkTypeFilter] = useState('all');
   const [searchTerm, setSearchTerm] = useState('');
@@ -334,33 +489,47 @@ export function ProductionProvider({ children }) {
     setIsStageModalOpen(true);
   };
 
-  // Metas Globais do Setor
-  const [sectorGoals, setSectorGoals] = useState(() => {
-    try {
-      const saved = localStorage.getItem('designflow_sector_goals');
-      return saved ? JSON.parse(saved) : null;
-    } catch {
-      return null;
-    }
-  });
+  // Verifica se algum lançamento de hoje atingiu a meta diária do designer para comemorar com confetti
+  const checkAndCelebrateDailyGoal = useCallback(
+    (newEntriesList) => {
+      const today = getLocalDateStr();
+      const todayAdded = newEntriesList.filter((e) => e.date === today);
+      if (todayAdded.length === 0) return;
 
-  const updateSectorGoals = (newGoals) => {
-    setSectorGoals(newGoals);
-    try {
-      localStorage.setItem('designflow_sector_goals', JSON.stringify(newGoals));
-    } catch {
-      // Ignora
-    }
-  };
+      for (const ent of todayAdded) {
+        const des = designers.find((d) => d.id === ent.designerId);
+        if (!des) continue;
 
-  const resetSectorGoals = () => {
-    setSectorGoals(null);
-    try {
-      localStorage.removeItem('designflow_sector_goals');
-    } catch {
-      // Ignora
-    }
-  };
+        const existingTodayForDes = entries.filter(
+          (e) => e.designerId === des.id && e.date === today && e.stage === ent.stage
+        );
+
+        if (ent.stage === 'criacao' && Number(des.goalCriacaoArtes) > 0) {
+          const prevSum = existingTodayForDes.reduce((a, b) => a + (Number(b.piecesCount) || 1), 0);
+          const newSum = prevSum + (Number(ent.piecesCount) || 1);
+          if (prevSum < des.goalCriacaoArtes && newSum >= des.goalCriacaoArtes) {
+            fireCelebrationConfetti(`🎯 Meta Diária Batida! ${des.name} atingiu ${newSum}/${des.goalCriacaoArtes} artes hoje!`);
+            return;
+          }
+        } else if (ent.stage === 'exportacao' && Number(des.goalExportacao) > 0) {
+          const prevSum = existingTodayForDes.reduce((a, b) => a + (Number(b.piecesCount) || 1), 0);
+          const newSum = prevSum + (Number(ent.piecesCount) || 1);
+          if (prevSum < des.goalExportacao && newSum >= des.goalExportacao) {
+            fireCelebrationConfetti(`🎯 Meta Diária Batida! ${des.name} atingiu ${newSum}/${des.goalExportacao} exportações hoje!`);
+            return;
+          }
+        } else if (ent.stage === 'impressao' && Number(des.goalImpressaoPecas) > 0) {
+          const prevSum = existingTodayForDes.reduce((a, b) => a + (Number(b.piecesCount) || 0), 0);
+          const newSum = prevSum + (Number(ent.piecesCount) || 0);
+          if (prevSum < des.goalImpressaoPecas && newSum >= des.goalImpressaoPecas) {
+            fireCelebrationConfetti(`🎯 Meta Diária Batida! ${des.name} atingiu ${newSum}/${des.goalImpressaoPecas} peças impressas hoje!`);
+            return;
+          }
+        }
+      }
+    },
+    [designers, entries, fireCelebrationConfetti]
+  );
 
   // ==========================================
   // AÇÕES DE PEDIDOS E LANÇAMENTOS
@@ -395,6 +564,8 @@ export function ProductionProvider({ children }) {
     };
 
     setOrders((prev) => [newOrder, ...prev]);
+
+    checkAndCelebrateDailyGoal(formattedEntries);
 
     // Sincronizar com o Supabase
     if (isSupabaseActive && supabase) {
@@ -455,6 +626,10 @@ export function ProductionProvider({ children }) {
         return ord;
       })
     );
+
+    if (editingOrder && editingOrder.id === orderId && updatedOrder) {
+      setEditingOrder(updatedOrder);
+    }
 
     // Sincroniza alterações do cabeçalho no Supabase
     if (isSupabaseActive && supabase && (updatedOrder || existingOrder)) {
@@ -523,6 +698,8 @@ export function ProductionProvider({ children }) {
         return ord;
       })
     );
+
+    checkAndCelebrateDailyGoal([newEntry]);
 
     if (isSupabaseActive && supabase && targetOrder) {
       try {
@@ -825,7 +1002,11 @@ export function ProductionProvider({ children }) {
         const { error: entErr } = await supabase.from('production_entries').upsert(allPayloadEntries);
         if (entErr) throw entErr;
       }
-      alert(`✅ Sincronização concluída com sucesso!\n\n${designers.length} designer(s) e ${orders.length} pedido(s) foram sincronizados com o Supabase.`);
+
+      // Sincroniza também as configurações de dias úteis, feriados, folgas e metas do setor
+      await persistSystemConfigToSupabase(workingDaysConfig, sectorGoals);
+
+      alert(`✅ Sincronização concluída com sucesso!\n\n${designers.length} designer(s), ${orders.length} pedido(s) e as configurações de Dias Úteis/Metas foram sincronizados com o Supabase.`);
     } catch (err) {
       console.error('Erro ao sincronizar com Supabase:', err);
       alert(`Erro na sincronização: ${err.message}`);
@@ -843,6 +1024,7 @@ export function ProductionProvider({ children }) {
 
       const { data: dbEnt } = await supabase.from('production_entries').select('*').order('date', { ascending: false });
       if (dbEnt) {
+        applyRemoteConfigIfPresent(dbEnt);
         const mappedEntries = dbEnt.map(mapEntryFromDB);
         setOrders(groupEntriesIntoOrders(mappedEntries));
       }
@@ -926,22 +1108,44 @@ export function ProductionProvider({ children }) {
     });
   }, [entries, dateBounds]);
 
+  // Contadores de Status da Fila de Produção (para as pílulas rápidas na OrdersTable)
+  const queueStatusCounts = useMemo(() => {
+    const counts = {
+      all: periodOrders.length,
+      aguardando_arte: 0,
+      falta_exportar: 0,
+      falta_imprimir: 0,
+      concluido: 0
+    };
+    periodOrders.forEach((ord) => {
+      const st = getOrderQueueStatus(ord);
+      if (counts[st] !== undefined) counts[st]++;
+    });
+    return counts;
+  }, [periodOrders]);
+
   // Pedidos Filtrados (para exibição na OrdersTable)
   const filteredOrders = useMemo(() => {
     return periodOrders.filter((ord) => {
-      // 1. Filtro por Etapa
+      // 1. Filtro de Status da Fila de Pendências
+      if (selectedQueueStatusFilter !== 'all') {
+        const qStatus = getOrderQueueStatus(ord);
+        if (qStatus !== selectedQueueStatusFilter) return false;
+      }
+
+      // 2. Filtro por Etapa Realizada
       if (selectedStageFilter !== 'all') {
         const hasStage = (ord.entries || []).some((e) => e.stage === selectedStageFilter);
         if (!hasStage) return false;
       }
 
-      // 2. Filtro por Designer
+      // 3. Filtro por Designer
       if (selectedDesignerFilter !== 'all') {
         const hasDesigner = (ord.entries || []).some((e) => e.designerId === selectedDesignerFilter);
         if (!hasDesigner) return false;
       }
 
-      // 3. Filtro por Tipo de Lançamento (Arte Nova, Ajuste, Reposição)
+      // 4. Filtro por Tipo de Lançamento (Arte Nova, Ajuste, Reposição)
       if (selectedWorkTypeFilter !== 'all') {
         const matchOrderWork = (ord.workType || 'arte_nova') === selectedWorkTypeFilter;
         const matchEntryWork = (ord.entries || []).some(
@@ -950,7 +1154,7 @@ export function ProductionProvider({ children }) {
         if (!matchOrderWork && !matchEntryWork) return false;
       }
 
-      // 4. Termo de Busca
+      // 5. Termo de Busca
       if (searchTerm.trim()) {
         const term = searchTerm.toLowerCase();
         const matchNum = ord.orderNumber?.toLowerCase().includes(term);
@@ -964,7 +1168,7 @@ export function ProductionProvider({ children }) {
 
       return true;
     });
-  }, [periodOrders, selectedStageFilter, selectedDesignerFilter, selectedWorkTypeFilter, searchTerm]);
+  }, [periodOrders, selectedQueueStatusFilter, selectedStageFilter, selectedDesignerFilter, selectedWorkTypeFilter, searchTerm]);
 
   // Lançamentos filtrados (compatibilidade com CSV)
   const filteredEntries = useMemo(() => {
@@ -1477,7 +1681,7 @@ export function ProductionProvider({ children }) {
   // Backup JSON
   const exportToJSON = () => {
     const data = {
-      version: '3.1',
+      version: '3.2',
       exportedAt: new Date().toISOString(),
       designers,
       orders,
@@ -1534,6 +1738,7 @@ export function ProductionProvider({ children }) {
         periodEntries,
         filteredOrders,
         filteredEntries,
+        queueStatusCounts,
         metrics,
         periodFilter,
         setPeriodFilter,
@@ -1542,6 +1747,8 @@ export function ProductionProvider({ children }) {
         dateBounds,
         selectedStageFilter,
         setSelectedStageFilter,
+        selectedQueueStatusFilter,
+        setSelectedQueueStatusFilter,
         selectedDesignerFilter,
         setSelectedDesignerFilter,
         selectedWorkTypeFilter,
@@ -1606,6 +1813,10 @@ export function ProductionProvider({ children }) {
         removeHolidayDate,
         resetNationalHolidays,
         setDesignerAbsenceDays,
+        // Toast / Confetti
+        toastNotice,
+        setToastNotice,
+        fireCelebrationConfetti,
         // Supabase
         isSupabaseActive,
         isLoadingDB,

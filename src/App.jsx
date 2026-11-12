@@ -23,7 +23,9 @@ export function AppContent() {
     setIsStageModalOpen,
     targetOrderForStage,
     editingStageEntry,
-    initialStageForModal
+    initialStageForModal,
+    toastNotice,
+    setToastNotice
   } = useProduction();
 
   return (
@@ -74,6 +76,21 @@ export function AppContent() {
         onClose={() => setIsSupabaseModalOpen(false)}
       />
       <SectorGoalsModal />
+
+      {/* Toast Global de Celebração / Feedback */}
+      {toastNotice && (
+        <div
+          className="toast-notice"
+          style={{
+            borderColor: toastNotice.type === 'celebration' ? '#34d399' : 'var(--border-light)',
+            background: toastNotice.type === 'celebration' ? '#132520' : 'var(--bg-surface-elevated)',
+            cursor: 'pointer'
+          }}
+          onClick={() => setToastNotice(null)}
+        >
+          <span>{toastNotice.message}</span>
+        </div>
+      )}
     </div>
   );
 }

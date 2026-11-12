@@ -120,7 +120,7 @@ export function StageEntryModal({ isOpen, onClose, order, entry = null, initialS
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" style={{ zIndex: 130 }} onClick={onClose}>
       <div
         className="modal-content"
         onClick={(e) => e.stopPropagation()}

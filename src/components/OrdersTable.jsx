@@ -1,35 +1,41 @@
-import React, { useState } from 'react';
-import { useProduction } from '../context/ProductionContext';
+import React, { useState, useMemo } from 'react';
+import { useProduction, getOrderQueueStatus } from '../context/ProductionContext';
 import { STAGES, ORDER_TYPES, WORK_TYPES } from '../constants/initialData';
-import { 
-  Search, 
-  Download, 
-  PlusCircle, 
-  Edit3, 
-  Trash2, 
-  Layers, 
-  Calendar, 
-  PenTool, 
-  Printer, 
+import {
+  Search,
+  Download,
+  PlusCircle,
+  Edit3,
+  Trash2,
+  Layers,
+  Calendar,
+  PenTool,
+  Printer,
   Inbox,
   Check,
   ChevronDown,
   ChevronUp,
   Plus,
-  FileText
+  FileText,
+  ArrowUpDown,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 
 export function OrdersTable() {
-  const { 
-    filteredOrders, 
-    designers, 
-    selectedStageFilter, 
+  const {
+    filteredOrders,
+    queueStatusCounts,
+    designers,
+    selectedStageFilter,
     setSelectedStageFilter,
-    selectedDesignerFilter, 
+    selectedQueueStatusFilter,
+    setSelectedQueueStatusFilter,
+    selectedDesignerFilter,
     setSelectedDesignerFilter,
     selectedWorkTypeFilter,
     setSelectedWorkTypeFilter,
-    searchTerm, 
+    searchTerm,
     setSearchTerm,
     exportToCSV,
     deleteOrder,
@@ -42,6 +48,89 @@ export function OrdersTable() {
 
   // Controle de linhas expandidas para ver o histórico de lançamentos do pedido
   const [expandedOrders, setExpandedOrders] = useState(new Set());
+
+  // Ordenação por coluna
+  const [sortConfig, setSortConfig] = useState({ key: 'date', direction: 'desc' });
+
+  const handleSort = (key) => {
+    setSortConfig((prev) => {
+      if (prev.key === key) {
+        return { key, direction: prev.direction === 'asc' ? 'desc' : 'asc' };
+      }
+      return { key, direction: key === 'clientName' || key === 'orderNumber' ? 'asc' : 'desc' };
+    });
+  };
+
+  // Lista ordenada conforme coluna selecionada
+  const sortedOrders = useMemo(() => {
+    const list = [...filteredOrders];
+    const dir = sortConfig.direction === 'asc' ? 1 : -1;
+
+    const statusWeight = {
+      aguardando_arte: 1,
+      falta_exportar: 2,
+      falta_imprimir: 3,
+      concluido: 4
+    };
+
+    list.sort((a, b) => {
+      switch (sortConfig.key) {
+        case 'date': {
+          const da = a.date || '';
+          const db = b.date || '';
+          if (da !== db) return da.localeCompare(db) * dir;
+          return (a.orderNumber || '').localeCompare(b.orderNumber || '') * dir;
+        }
+        case 'orderNumber':
+          return (a.orderNumber || '').localeCompare(b.orderNumber || '', undefined, { numeric: true }) * dir;
+        case 'clientName':
+          return (a.clientName || '').localeCompare(b.clientName || '') * dir;
+        case 'totalPieces':
+          return ((Number(a.totalPieces) || 0) - (Number(b.totalPieces) || 0)) * dir;
+        case 'status': {
+          const wa = statusWeight[getOrderQueueStatus(a)] || 0;
+          const wb = statusWeight[getOrderQueueStatus(b)] || 0;
+          return (wa - wb) * dir;
+        }
+        default:
+          return 0;
+      }
+    });
+
+    return list;
+  }, [filteredOrders, sortConfig]);
+
+  // Totais em tempo real dos pedidos filtrados na tela
+  const filteredTotals = useMemo(() => {
+    let totalPieces = 0;
+    let printedPieces = 0;
+    let totalMeters = 0;
+    let artesCount = 0;
+    let exportacoesCount = 0;
+
+    filteredOrders.forEach((ord) => {
+      totalPieces += Number(ord.totalPieces) || 0;
+      (ord.entries || []).forEach((ent) => {
+        totalMeters += Number(ent.meters) || 0;
+        if (ent.stage === 'criacao') {
+          artesCount += Number(ent.piecesCount) > 0 ? Number(ent.piecesCount) : 1;
+        } else if (ent.stage === 'exportacao') {
+          exportacoesCount += Number(ent.piecesCount) > 0 ? Number(ent.piecesCount) : 1;
+        } else if (ent.stage === 'impressao') {
+          printedPieces += Number(ent.piecesCount) || 0;
+        }
+      });
+    });
+
+    return {
+      ordersCount: filteredOrders.length,
+      totalPieces,
+      printedPieces,
+      totalMeters: Number(totalMeters.toFixed(1)),
+      artesCount,
+      exportacoesCount
+    };
+  }, [filteredOrders]);
 
   const toggleExpand = (orderId) => {
     setExpandedOrders((prev) => {
@@ -81,10 +170,89 @@ export function OrdersTable() {
     return dateStr;
   };
 
+  const renderSortIcon = (colKey) => {
+    if (sortConfig.key !== colKey) {
+      return <ArrowUpDown size={11} color="var(--text-muted)" style={{ opacity: 0.5 }} />;
+    }
+    return sortConfig.direction === 'asc' ? (
+      <ArrowUp size={11} color="var(--accent-blue)" />
+    ) : (
+      <ArrowDown size={11} color="var(--accent-blue)" />
+    );
+  };
+
+  const hasAnyFilter =
+    selectedQueueStatusFilter !== 'all' ||
+    selectedDesignerFilter !== 'all' ||
+    selectedStageFilter !== 'all' ||
+    selectedWorkTypeFilter !== 'all' ||
+    Boolean(searchTerm);
+
+  const queuePills = [
+    { id: 'all', label: 'Todos na Fila', count: queueStatusCounts?.all || 0, color: 'var(--text-primary)' },
+    { id: 'aguardando_arte', label: '⏳ Aguardando Arte', count: queueStatusCounts?.aguardando_arte || 0, color: '#94a3b8' },
+    { id: 'falta_exportar', label: '📐 Falta Exportar', count: queueStatusCounts?.falta_exportar || 0, color: '#60a5fa' },
+    { id: 'falta_imprimir', label: '🖨️ Pronto p/ Imprimir', count: queueStatusCounts?.falta_imprimir || 0, color: '#a78bfa' },
+    { id: 'concluido', label: '✅ 100% Concluídos', count: queueStatusCounts?.concluido || 0, color: '#34d399' }
+  ];
+
   return (
     <div className="orders-view">
-      {/* Barra de Filtros e Busca */}
-      <div 
+      {/* 1. Pílulas Rápidas de Status da Fila de Pendências */}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          marginBottom: '12px',
+          flexWrap: 'wrap'
+        }}
+      >
+        <span style={{ fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)', marginRight: '4px' }}>
+          Fila de Produção:
+        </span>
+        {queuePills.map((pill) => {
+          const isActive = selectedQueueStatusFilter === pill.id;
+          return (
+            <button
+              key={pill.id}
+              type="button"
+              onClick={() => setSelectedQueueStatusFilter(pill.id)}
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                padding: '6px 12px',
+                borderRadius: 'var(--radius-md)',
+                fontSize: '0.76rem',
+                fontWeight: isActive ? 700 : 500,
+                background: isActive ? 'var(--bg-surface-elevated)' : 'var(--bg-secondary)',
+                border: isActive ? `1px solid ${pill.color}` : '1px solid var(--border-subtle)',
+                color: isActive ? pill.color : 'var(--text-secondary)',
+                cursor: 'pointer',
+                transition: 'var(--trans-fast)'
+              }}
+            >
+              <span>{pill.label}</span>
+              <span
+                style={{
+                  fontSize: '0.68rem',
+                  fontWeight: 700,
+                  padding: '1px 6px',
+                  borderRadius: '999px',
+                  background: isActive ? 'rgba(255,255,255,0.08)' : 'var(--bg-surface)',
+                  color: isActive ? pill.color : 'var(--text-muted)'
+                }}
+              >
+                {pill.count}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* 2. Barra de Filtros e Busca */}
+      <div
         style={{
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border-subtle)',
@@ -100,10 +268,10 @@ export function OrdersTable() {
       >
         {/* Campo de Busca */}
         <div style={{ position: 'relative', flex: '1 1 260px' }}>
-          <Search 
-            size={15} 
-            color="var(--text-muted)" 
-            style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }} 
+          <Search
+            size={15}
+            color="var(--text-muted)"
+            style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}
           />
           <input
             id="search-orders-input"
@@ -134,7 +302,7 @@ export function OrdersTable() {
             ))}
           </select>
 
-          {/* Filtro por Etapa */}
+          {/* Filtro por Etapa Realizada */}
           <select
             id="filter-stage-select"
             className="form-select"
@@ -142,10 +310,10 @@ export function OrdersTable() {
             value={selectedStageFilter}
             onChange={(e) => setSelectedStageFilter(e.target.value)}
           >
-            <option value="all">Todas as Etapas</option>
-            <option value="criacao">🎨 Criação de Arte</option>
-            <option value="exportacao">📐 Exportação</option>
-            <option value="impressao">🖨️ Impressão</option>
+            <option value="all">Qualquer Etapa Feita</option>
+            <option value="criacao">🎨 Com Criação</option>
+            <option value="exportacao">📐 Com Exportação</option>
+            <option value="impressao">🖨️ Com Impressão</option>
           </select>
 
           {/* Filtro por Tipo de Lançamento */}
@@ -188,8 +356,8 @@ export function OrdersTable() {
         </div>
       </div>
 
-      {/* Tabela de Pedidos Únicos */}
-      <div 
+      {/* 3. Tabela de Pedidos Únicos */}
+      <div
         style={{
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border-subtle)',
@@ -197,24 +365,47 @@ export function OrdersTable() {
           overflow: 'hidden'
         }}
       >
-        <div 
+        {/* Barra de Resumo & Totais da Busca */}
+        <div
           style={{
             padding: '12px 18px',
             borderBottom: '1px solid var(--border-subtle)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'space-between',
+            flexWrap: 'wrap',
+            gap: '12px',
             background: 'var(--bg-surface)'
           }}
         >
-          <span style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--text-muted)' }}>
-            Exibindo <strong style={{ color: 'var(--text-primary)' }}>{filteredOrders.length}</strong> pedido(s) únicos no período
-          </span>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+            <span>
+              Exibindo <strong style={{ color: 'var(--text-primary)' }}>{filteredTotals.ordersCount}</strong> pedido(s)
+            </span>
+            <span>•</span>
+            <span>
+              Total Peças: <strong style={{ color: 'var(--text-primary)' }}>{filteredTotals.totalPieces.toLocaleString('pt-BR')} pçs</strong>
+            </span>
+            <span>•</span>
+            <span style={{ color: '#60a5fa' }}>
+              🎨 Artes: <strong>{filteredTotals.artesCount}</strong>
+            </span>
+            <span>•</span>
+            <span style={{ color: '#a78bfa' }}>
+              📐 Fechamentos: <strong>{filteredTotals.exportacoesCount}</strong>
+            </span>
+            <span>•</span>
+            <span style={{ color: '#34d399' }}>
+              🖨️ Impressas: <strong>{filteredTotals.printedPieces.toLocaleString('pt-BR')} pçs</strong>
+              {filteredTotals.totalMeters > 0 && ` (${filteredTotals.totalMeters}m)`}
+            </span>
+          </div>
 
-          {(selectedDesignerFilter !== 'all' || selectedStageFilter !== 'all' || selectedWorkTypeFilter !== 'all' || searchTerm) && (
+          {hasAnyFilter && (
             <button
               className="btn btn-secondary btn-sm"
               onClick={() => {
+                setSelectedQueueStatusFilter('all');
                 setSelectedDesignerFilter('all');
                 setSelectedStageFilter('all');
                 setSelectedWorkTypeFilter('all');
@@ -226,14 +417,14 @@ export function OrdersTable() {
           )}
         </div>
 
-        {filteredOrders.length === 0 ? (
+        {sortedOrders.length === 0 ? (
           <div style={{ textAlign: 'center', padding: '50px 20px', color: 'var(--text-muted)' }}>
             <Inbox size={40} strokeWidth={1.5} color="var(--border-light)" style={{ marginBottom: '12px' }} />
             <h4 style={{ color: 'var(--text-primary)', marginBottom: '4px', fontSize: '0.95rem' }}>Nenhum pedido encontrado</h4>
             <p style={{ fontSize: '0.78rem', maxWidth: '380px', margin: '0 auto 16px' }}>
               Nenhum pedido corresponde aos filtros ou período selecionado.
             </p>
-            <button 
+            <button
               className="btn btn-primary btn-sm"
               onClick={() => {
                 setEditingOrder(null);
@@ -250,17 +441,57 @@ export function OrdersTable() {
               <thead>
                 <tr>
                   <th style={{ width: '40px', textAlign: 'center' }}></th>
-                  <th>Data</th>
-                  <th>Nº Pedido</th>
-                  <th>Cliente & Detalhes do Uniforme</th>
-                  <th>Processo & Peças</th>
-                  <th style={{ minWidth: '220px' }}>Etapas / Status de Produção</th>
+                  <th
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('date')}
+                    title="Clique para ordenar por Data"
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      Data {renderSortIcon('date')}
+                    </div>
+                  </th>
+                  <th
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('orderNumber')}
+                    title="Clique para ordenar por Nº do Pedido"
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      Nº Pedido {renderSortIcon('orderNumber')}
+                    </div>
+                  </th>
+                  <th
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('clientName')}
+                    title="Clique para ordenar por Cliente"
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      Cliente & Detalhes do Uniforme {renderSortIcon('clientName')}
+                    </div>
+                  </th>
+                  <th
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('totalPieces')}
+                    title="Clique para ordenar por Quantidade de Peças"
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      Processo & Peças {renderSortIcon('totalPieces')}
+                    </div>
+                  </th>
+                  <th
+                    style={{ minWidth: '220px', cursor: 'pointer', userSelect: 'none' }}
+                    onClick={() => handleSort('status')}
+                    title="Clique para ordenar pelo Status de Produção"
+                  >
+                    <div style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+                      Etapas / Status de Produção {renderSortIcon('status')}
+                    </div>
+                  </th>
                   <th style={{ minWidth: '120px' }}>Próxima Ação</th>
                   <th style={{ textAlign: 'center', width: '130px' }}>Gerenciar</th>
                 </tr>
               </thead>
               <tbody>
-                {filteredOrders.map((order) => {
+                {sortedOrders.map((order) => {
                   const isExpanded = expandedOrders.has(order.id);
                   const orderEntries = order.entries || [];
 
@@ -290,7 +521,7 @@ export function OrdersTable() {
                     statusBg = 'rgba(167, 139, 250, 0.12)';
                     statusBorder = 'rgba(167, 139, 250, 0.3)';
                   } else if (hasCriacao) {
-                    statusLabel = 'Arte Concluída';
+                    statusLabel = 'Falta Exportar';
                     statusColor = '#60a5fa';
                     statusBg = 'rgba(96, 165, 250, 0.12)';
                     statusBorder = 'rgba(96, 165, 250, 0.3)';
@@ -301,8 +532,8 @@ export function OrdersTable() {
 
                   return (
                     <React.Fragment key={order.id}>
-                      <tr 
-                        style={{ 
+                      <tr
+                        style={{
                           background: isExpanded ? 'rgba(255, 255, 255, 0.02)' : 'transparent',
                           transition: 'background 0.15s ease'
                         }}
@@ -331,7 +562,7 @@ export function OrdersTable() {
                         {/* Pedido */}
                         <td>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '3px', alignItems: 'flex-start' }}>
-                            <span 
+                            <span
                               style={{
                                 fontFamily: 'monospace',
                                 fontWeight: 700,
@@ -383,7 +614,7 @@ export function OrdersTable() {
                         {/* Processo & Total de Peças */}
                         <td>
                           <div style={{ display: 'flex', flexDirection: 'column', gap: '2px', alignItems: 'flex-start' }}>
-                            <span 
+                            <span
                               style={{
                                 fontSize: '0.73rem',
                                 color: 'var(--text-secondary)',
@@ -392,7 +623,7 @@ export function OrdersTable() {
                             >
                               {orderTypeObj?.name || order.orderType}
                             </span>
-                            <span 
+                            <span
                               style={{
                                 fontSize: '0.72rem',
                                 fontWeight: 600,
@@ -438,8 +669,8 @@ export function OrdersTable() {
                             <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexWrap: 'wrap' }}>
                               {/* Chip Criação */}
                               {hasCriacao ? (
-                                <span 
-                                  className="stage-badge" 
+                                <span
+                                  className="stage-badge"
                                   style={{ color: '#60a5fa', borderColor: 'rgba(96, 165, 250, 0.3)', fontSize: '0.7rem', padding: '1px 6px' }}
                                   title={`Criação feita por ${criacaoEntries.map((e) => e.designerName).join(', ')}`}
                                 >
@@ -455,8 +686,8 @@ export function OrdersTable() {
 
                               {/* Chip Exportação */}
                               {hasExportacao ? (
-                                <span 
-                                  className="stage-badge" 
+                                <span
+                                  className="stage-badge"
                                   style={{ color: '#a78bfa', borderColor: 'rgba(167, 139, 250, 0.3)', fontSize: '0.7rem', padding: '1px 6px' }}
                                   title={`Exportado por ${exportacaoEntries.map((e) => e.designerName).join(', ')}`}
                                 >
@@ -472,8 +703,8 @@ export function OrdersTable() {
 
                               {/* Chip Impressão */}
                               {hasImpressao ? (
-                                <span 
-                                  className="stage-badge" 
+                                <span
+                                  className="stage-badge"
                                   style={{ color: '#34d399', borderColor: 'rgba(52, 211, 153, 0.3)', fontSize: '0.7rem', padding: '1px 6px' }}
                                   title={`Impresso por ${impressaoEntries.map((e) => e.designerName).join(', ')}`}
                                 >
@@ -494,13 +725,13 @@ export function OrdersTable() {
                         <td>
                           <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
                             {hasImpressao ? (
-                              <span 
-                                style={{ 
-                                  fontSize: '0.68rem', 
-                                  color: '#34d399', 
-                                  background: 'rgba(52, 211, 153, 0.08)', 
+                              <span
+                                style={{
+                                  fontSize: '0.68rem',
+                                  color: '#34d399',
+                                  background: 'rgba(52, 211, 153, 0.08)',
                                   border: '1px solid rgba(52, 211, 153, 0.25)',
-                                  padding: '2px 6px', 
+                                  padding: '2px 6px',
                                   borderRadius: 'var(--radius-sm)',
                                   display: 'inline-flex',
                                   alignItems: 'center',
@@ -509,14 +740,33 @@ export function OrdersTable() {
                               >
                                 <Check size={11} /> 100% Finalizado
                               </span>
+                            ) : !hasCriacao ? (
+                              <button
+                                type="button"
+                                className="btn btn-secondary btn-sm"
+                                style={{
+                                  padding: '2px 7px',
+                                  fontSize: '0.68rem',
+                                  borderColor: 'rgba(96, 165, 250, 0.4)',
+                                  color: '#93c5fd',
+                                  height: 'auto',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  gap: '4px'
+                                }}
+                                onClick={() => openAddStageToOrder(order, 'criacao')}
+                                title="Lançar etapa de Criação de Arte para este pedido"
+                              >
+                                <PenTool size={11} /> + Criar Arte
+                              </button>
                             ) : !hasExportacao ? (
                               <button
                                 type="button"
                                 className="btn btn-secondary btn-sm"
-                                style={{ 
-                                  padding: '2px 7px', 
-                                  fontSize: '0.68rem', 
-                                  borderColor: 'rgba(167, 139, 250, 0.4)', 
+                                style={{
+                                  padding: '2px 7px',
+                                  fontSize: '0.68rem',
+                                  borderColor: 'rgba(167, 139, 250, 0.4)',
                                   color: '#c4b5fd',
                                   height: 'auto',
                                   display: 'inline-flex',
@@ -532,10 +782,10 @@ export function OrdersTable() {
                               <button
                                 type="button"
                                 className="btn btn-secondary btn-sm"
-                                style={{ 
-                                  padding: '2px 7px', 
-                                  fontSize: '0.68rem', 
-                                  borderColor: 'rgba(52, 211, 153, 0.4)', 
+                                style={{
+                                  padding: '2px 7px',
+                                  fontSize: '0.68rem',
+                                  borderColor: 'rgba(52, 211, 153, 0.4)',
                                   color: '#6ee7b7',
                                   height: 'auto',
                                   display: 'inline-flex',
@@ -559,7 +809,12 @@ export function OrdersTable() {
                               type="button"
                               className="btn btn-primary btn-sm"
                               style={{ padding: '3px 7px', fontSize: '0.68rem', height: '26px', gap: '3px' }}
-                              onClick={() => openAddStageToOrder(order, !hasExportacao ? 'exportacao' : 'impressao')}
+                              onClick={() =>
+                                openAddStageToOrder(
+                                  order,
+                                  !hasCriacao ? 'criacao' : !hasExportacao ? 'exportacao' : 'impressao'
+                                )
+                              }
                               title="Adicionar um lançamento neste pedido (etapa seguinte ou refação)"
                             >
                               <Plus size={11} />
@@ -572,7 +827,7 @@ export function OrdersTable() {
                               className="btn btn-secondary btn-icon-only btn-sm"
                               style={{ width: '26px', height: '26px' }}
                               onClick={() => handleEditOrder(order)}
-                              title="Editar dados gerais do pedido"
+                              title="Editar dados gerais e etapas do pedido"
                             >
                               <Edit3 size={12} />
                             </button>
@@ -595,7 +850,7 @@ export function OrdersTable() {
                       {isExpanded && (
                         <tr style={{ background: 'rgba(14, 17, 23, 0.65)' }}>
                           <td colSpan={8} style={{ padding: '12px 18px', borderBottom: '1px solid var(--border-light)' }}>
-                            <div 
+                            <div
                               style={{
                                 background: 'var(--bg-surface)',
                                 border: '1px solid var(--border-light)',

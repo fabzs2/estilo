@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useProduction } from '../context/ProductionContext';
-import { ORDER_TYPES, WORK_TYPES, getLocalDateStr } from '../constants/initialData';
+import { ORDER_TYPES, WORK_TYPES, STAGES, getLocalDateStr } from '../constants/initialData';
 import {
   X,
   Save,
@@ -15,7 +15,9 @@ import {
   Package,
   AlertCircle,
   Plus,
-  RefreshCw
+  RefreshCw,
+  Edit3,
+  Trash2
 } from 'lucide-react';
 
 export function QuickEntryModal() {
@@ -28,13 +30,21 @@ export function QuickEntryModal() {
     updateOrder,
     editingOrder,
     setEditingOrder,
-    openAddStageToOrder
+    openAddStageToOrder,
+    openEditStageInOrder,
+    deleteEntryFromOrder
   } = useProduction();
 
   const activeDesigners = useMemo(() => {
     const active = designers.filter((d) => d.active !== false);
     return active.length > 0 ? active : designers;
   }, [designers]);
+
+  // Pedido ao vivo (para refletir imediatamente lançamentos adicionados/editados enquanto o modal está aberto)
+  const liveEditingOrder = useMemo(() => {
+    if (!editingOrder) return null;
+    return orders.find((o) => o.id === editingOrder.id) || editingOrder;
+  }, [editingOrder, orders]);
 
   // Dados Gerais do Pedido
   const [generalData, setGeneralData] = useState({
@@ -202,6 +212,15 @@ export function QuickEntryModal() {
     }
   };
 
+  const formatDateBR = (dateStr) => {
+    if (!dateStr) return '-';
+    const parts = dateStr.split('-');
+    if (parts.length === 3) {
+      return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+    return dateStr;
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
 
@@ -304,11 +323,11 @@ export function QuickEntryModal() {
           <div>
             <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <Package size={18} color="var(--accent-blue)" />
-              {editingOrder ? `Editar Pedido ${editingOrder.orderNumber}` : 'Novo Pedido de Produção'}
+              {editingOrder ? `Editar Pedido ${liveEditingOrder?.orderNumber || editingOrder.orderNumber}` : 'Novo Pedido de Produção'}
             </div>
             <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
               {editingOrder
-                ? 'Atualize os dados gerais do pedido (os lançamentos continuam salvos no histórico)'
+                ? 'Atualize os dados do cabeçalho ou gerencie as etapas de produção registradas neste pedido abaixo'
                 : 'Cadastre o pedido e, se desejar, já preencha as etapas concluídas (Criação, Exportação e Impressão)'}
             </div>
           </div>
@@ -501,7 +520,174 @@ export function QuickEntryModal() {
               </div>
             </div>
 
-            {/* SEÇÃO 2: LANÇAMENTOS DE ETAPAS (Apenas no modo Novo Pedido) */}
+            {/* SEÇÃO 2 (MODO EDIÇÃO): GERENCIAR ETAPAS JÁ LANÇADAS OU ADICIONAR NOVA ETAPA */}
+            {editingOrder && liveEditingOrder && (
+              <div
+                style={{
+                  background: 'var(--bg-surface)',
+                  border: '1px solid var(--border-subtle)',
+                  borderRadius: 'var(--radius-md)',
+                  padding: '16px'
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '12px', flexWrap: 'wrap', gap: '8px' }}>
+                  <div>
+                    <span style={{ fontSize: '0.8rem', fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-primary)' }}>
+                      2. Etapas de Produção Registradas ({liveEditingOrder.entries?.length || 0})
+                    </span>
+                    <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                      Edite uma etapa existente ou lance uma nova etapa diretamente neste pedido.
+                    </div>
+                  </div>
+
+                  {/* Botões rápidos para adicionar etapa */}
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: '0.7rem', padding: '4px 8px', borderColor: 'rgba(96, 165, 250, 0.4)', color: '#60a5fa' }}
+                      onClick={() => openAddStageToOrder(liveEditingOrder, 'criacao')}
+                    >
+                      <PenTool size={11} /> + Criação
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: '0.7rem', padding: '4px 8px', borderColor: 'rgba(167, 139, 250, 0.4)', color: '#a78bfa' }}
+                      onClick={() => openAddStageToOrder(liveEditingOrder, 'exportacao')}
+                    >
+                      <Layers size={11} /> + Exportação
+                    </button>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: '0.7rem', padding: '4px 8px', borderColor: 'rgba(52, 211, 153, 0.4)', color: '#34d399' }}
+                      onClick={() => openAddStageToOrder(liveEditingOrder, 'impressao')}
+                    >
+                      <Printer size={11} /> + Impressão
+                    </button>
+                  </div>
+                </div>
+
+                {(!liveEditingOrder.entries || liveEditingOrder.entries.length === 0) ? (
+                  <div style={{ textAlign: 'center', padding: '18px', background: 'var(--bg-secondary)', borderRadius: 'var(--radius-sm)', border: '1px dashed var(--border-subtle)', fontSize: '0.76rem', color: 'var(--text-muted)' }}>
+                    Nenhuma etapa lançada ainda (Pedido em "Aguardando Início"). Use os botões acima para registrar Criação, Exportação ou Impressão.
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {liveEditingOrder.entries.map((entry, idx) => {
+                      const entryStage = STAGES[entry.stage] || STAGES.criacao;
+                      const entryWork = WORK_TYPES[entry.workType || 'arte_nova'] || WORK_TYPES.arte_nova;
+                      const entryDesigner = designers.find((d) => d.id === entry.designerId);
+
+                      return (
+                        <div
+                          key={entry.id || idx}
+                          style={{
+                            background: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-subtle)',
+                            borderRadius: 'var(--radius-sm)',
+                            padding: '9px 12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            flexWrap: 'wrap',
+                            gap: '10px'
+                          }}
+                        >
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
+                            <span
+                              className="stage-badge"
+                              style={{
+                                color: entryStage.color,
+                                background: entryStage.bgLight,
+                                borderColor: entryStage.color,
+                                fontWeight: 600
+                              }}
+                            >
+                              {entry.stage === 'criacao' && <PenTool size={11} />}
+                              {entry.stage === 'exportacao' && <Layers size={11} />}
+                              {entry.stage === 'impressao' && <Printer size={11} />}
+                              {entryStage.name}
+                            </span>
+
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              <div
+                                className="avatar-badge"
+                                style={{
+                                  width: '20px',
+                                  height: '20px',
+                                  fontSize: '0.65rem',
+                                  background: entryDesigner?.avatarColor || 'var(--bg-surface-elevated)',
+                                  color: '#fff'
+                                }}
+                              >
+                                {(entry.designerName || 'D').charAt(0)}
+                              </div>
+                              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {entry.designerName}
+                              </span>
+                            </div>
+
+                            <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
+                              {formatDateBR(entry.date)}
+                            </span>
+
+                            <span
+                              style={{
+                                fontSize: '0.64rem',
+                                color: entryWork.color,
+                                background: entryWork.bgLight,
+                                border: `1px solid ${entryWork.border}`,
+                                padding: '1px 5px',
+                                borderRadius: 'var(--radius-sm)',
+                                fontWeight: 600
+                              }}
+                            >
+                              {entryWork.name}
+                            </span>
+
+                            <span style={{ fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                              {entry.stage === 'criacao' && `${entry.piecesCount > 0 ? entry.piecesCount : 1} arte(s)`}
+                              {entry.stage === 'exportacao' && `${entry.piecesCount > 0 ? entry.piecesCount : 1} fechamento(s)`}
+                              {entry.stage === 'impressao' && `${entry.piecesCount || 0} peça(s)`}
+                              {Number(entry.meters) > 0 && ` • ${entry.meters}m`}
+                            </span>
+                          </div>
+
+                          <div style={{ display: 'flex', gap: '4px' }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-icon-only btn-sm"
+                              style={{ width: '24px', height: '24px' }}
+                              onClick={() => openEditStageInOrder(liveEditingOrder, entry)}
+                              title="Editar esta etapa"
+                            >
+                              <Edit3 size={11} />
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-icon-only btn-sm"
+                              style={{ width: '24px', height: '24px' }}
+                              onClick={() => {
+                                if (window.confirm(`Deseja remover este lançamento de ${entryStage.name}?`)) {
+                                  deleteEntryFromOrder(liveEditingOrder.id, entry.id);
+                                }
+                              }}
+                              title="Excluir esta etapa"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* SEÇÃO 2 (MODO NOVO PEDIDO): LANÇAMENTOS DE ETAPAS */}
             {!editingOrder && (
               <div
                 style={{
