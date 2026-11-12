@@ -2,8 +2,7 @@ import React, { useState } from 'react';
 import { useProduction } from '../context/ProductionContext';
 import { 
   saveSupabaseCredentials, 
-  clearSupabaseCredentials, 
-  isSupabaseConfigured 
+  clearSupabaseCredentials
 } from '../lib/supabase';
 import { createClient } from '@supabase/supabase-js';
 import { 
@@ -11,12 +10,9 @@ import {
   X, 
   Check, 
   Copy, 
-  ExternalLink, 
   Save, 
   RotateCcw,
   ShieldCheck,
-  Server,
-  AlertCircle,
   Loader2,
   UploadCloud,
   RefreshCw
@@ -26,7 +22,7 @@ export function SupabaseModal({ isOpen, onClose }) {
   const { 
     isSupabaseActive, 
     designers, 
-    entries, 
+    orders, 
     syncLocalToSupabase, 
     refreshFromSupabase 
   } = useProduction();
@@ -49,18 +45,18 @@ export function SupabaseModal({ isOpen, onClose }) {
 
     try {
       const client = createClient(url.trim(), key.trim());
-      const { data, error } = await client.from('designers').select('id, goal_criacao_artes').limit(1);
+      const { error } = await client.from('designers').select('id, goal_criacao_artes').limit(1);
 
       if (error) {
-        if (error.code === '42P01' || error.message?.includes('does not exist')) {
-          setTestStatus({
-            type: 'warning',
-            message: 'Atenção: A conexão com o Supabase funcionou, mas a tabela "designers" AINDA NÃO EXISTE! No Supabase as tabelas não são criadas pela tela. Você precisa copiar o script SQL abaixo e executá-lo no SQL Editor do painel do Supabase.'
-          });
-        } else if (error.message?.includes('column') && error.message?.includes('does not exist')) {
+        if (error.message?.includes('column') && error.message?.includes('does not exist')) {
           setTestStatus({
             type: 'warning',
             message: 'Atenção: A tabela existe, mas faltam as colunas de metas personalizadas. Execute o script SQL atualizado abaixo no SQL Editor do Supabase.'
+          });
+        } else if (error.code === '42P01' || error.message?.includes('does not exist')) {
+          setTestStatus({
+            type: 'warning',
+            message: 'Atenção: A conexão com o Supabase funcionou, mas a tabela "designers" AINDA NÃO EXISTE! No Supabase as tabelas não são criadas pela tela. Você precisa copiar o script SQL abaixo e executá-lo no SQL Editor do painel do Supabase.'
           });
         } else {
           setTestStatus({
@@ -139,10 +135,13 @@ CREATE TABLE IF NOT EXISTS production_entries (
   pieces_count INTEGER DEFAULT 0,
   meters NUMERIC DEFAULT 0,
   order_type TEXT DEFAULT 'sublimacao_total',
+  work_type TEXT DEFAULT 'arte_nova',
   complexity TEXT DEFAULT 'media',
   notes TEXT,
   created_at TIMESTAMPTZ DEFAULT NOW()
 );
+
+ALTER TABLE production_entries ADD COLUMN IF NOT EXISTS work_type TEXT DEFAULT 'arte_nova';
 
 -- 3. Índices de Otimização
 CREATE INDEX IF NOT EXISTS idx_entries_date ON production_entries(date);
@@ -333,7 +332,7 @@ CREATE POLICY "Permitir exclusão pública de pedidos" ON production_entries FOR
                     onClick={syncLocalToSupabase}
                   >
                     <UploadCloud size={13} />
-                    Enviar Dados Deste PC ({designers.length} designers, {entries.length} pedidos)
+                    Enviar Dados Deste PC ({designers.length} designers, {orders.length} pedidos)
                   </button>
 
                   <button

@@ -1,27 +1,30 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useProduction } from '../context/ProductionContext';
-import { STAGES, WORK_TYPES } from '../constants/initialData';
-import { 
-  X, 
-  Save, 
-  PenTool, 
-  Layers, 
-  Printer, 
-  Tag, 
-  Calendar, 
-  User, 
-  Hash, 
-  FileText 
+import { WORK_TYPES, getLocalDateStr } from '../constants/initialData';
+import {
+  X,
+  Save,
+  PenTool,
+  Layers,
+  Printer,
+  Tag,
+  Calendar,
+  User,
+  Hash,
+  FileText
 } from 'lucide-react';
 
 export function StageEntryModal({ isOpen, onClose, order, entry = null, initialStage = 'criacao' }) {
   const { designers, addEntryToOrder, updateEntryInOrder } = useProduction();
 
-  const getTodayStr = () => new Date().toISOString().split('T')[0];
+  const activeDesigners = useMemo(() => {
+    const active = designers.filter((d) => d.active !== false);
+    return active.length > 0 ? active : designers;
+  }, [designers]);
 
   const [stage, setStage] = useState(initialStage);
   const [designerId, setDesignerId] = useState('');
-  const [date, setDate] = useState(getTodayStr());
+  const [date, setDate] = useState(() => getLocalDateStr());
   const [workType, setWorkType] = useState('arte_nova');
   const [piecesCount, setPiecesCount] = useState('1');
   const [meters, setMeters] = useState('');
@@ -32,34 +35,30 @@ export function StageEntryModal({ isOpen, onClose, order, entry = null, initialS
     if (!isOpen) return;
 
     if (entry) {
-      // Modo edição de lançamento existente
       setStage(entry.stage || 'criacao');
-      setDesignerId(entry.designerId || (designers[0]?.id || ''));
-      setDate(entry.date || getTodayStr());
+      setDesignerId(entry.designerId || (activeDesigners[0]?.id || ''));
+      setDate(entry.date || getLocalDateStr());
       setWorkType(entry.workType || 'arte_nova');
       setPiecesCount(String(entry.piecesCount ?? '1'));
       setMeters(entry.meters ? String(entry.meters) : '');
       setNotes(entry.notes || '');
     } else {
-      // Modo novo lançamento
       const currentStage = initialStage || 'criacao';
       setStage(currentStage);
 
-      // Sugere o designer conforme especialidade
-      let defaultDes = designers[0]?.id || '';
+      let defaultDes = activeDesigners[0]?.id || '';
       if (currentStage === 'criacao') {
-        defaultDes = designers.find((d) => (d.role || '').toLowerCase().includes('cria'))?.id || defaultDes;
+        defaultDes = activeDesigners.find((d) => (d.role || '').toLowerCase().includes('cria'))?.id || defaultDes;
       } else if (currentStage === 'exportacao') {
-        defaultDes = designers.find((d) => (d.role || '').toLowerCase().includes('export') || (d.role || '').toLowerCase().includes('fechamento'))?.id || defaultDes;
+        defaultDes = activeDesigners.find((d) => (d.role || '').toLowerCase().includes('export') || (d.role || '').toLowerCase().includes('fechamento'))?.id || defaultDes;
       } else if (currentStage === 'impressao') {
-        defaultDes = designers.find((d) => (d.role || '').toLowerCase().includes('impress') || (d.role || '').toLowerCase().includes('rip'))?.id || defaultDes;
+        defaultDes = activeDesigners.find((d) => (d.role || '').toLowerCase().includes('impress') || (d.role || '').toLowerCase().includes('rip'))?.id || defaultDes;
       }
       setDesignerId(defaultDes);
 
-      setDate(getTodayStr());
+      setDate(getLocalDateStr());
       setWorkType('arte_nova');
 
-      // Quantidade padrão conforme etapa
       if (currentStage === 'impressao') {
         setPiecesCount(order?.totalPieces ? String(order.totalPieces) : '');
       } else {
@@ -68,22 +67,22 @@ export function StageEntryModal({ isOpen, onClose, order, entry = null, initialS
       setMeters('');
       setNotes('');
     }
-  }, [isOpen, entry, initialStage, order, designers]);
+  }, [isOpen, entry, initialStage, order, activeDesigners]);
 
   if (!isOpen || !order) return null;
 
   const handleStageSelect = (stg) => {
     setStage(stg);
     if (!entry) {
-      let defaultDes = designers[0]?.id || '';
+      let defaultDes = activeDesigners[0]?.id || '';
       if (stg === 'criacao') {
-        defaultDes = designers.find((d) => (d.role || '').toLowerCase().includes('cria'))?.id || defaultDes;
+        defaultDes = activeDesigners.find((d) => (d.role || '').toLowerCase().includes('cria'))?.id || defaultDes;
         setPiecesCount('1');
       } else if (stg === 'exportacao') {
-        defaultDes = designers.find((d) => (d.role || '').toLowerCase().includes('export') || (d.role || '').toLowerCase().includes('fechamento'))?.id || defaultDes;
+        defaultDes = activeDesigners.find((d) => (d.role || '').toLowerCase().includes('export') || (d.role || '').toLowerCase().includes('fechamento'))?.id || defaultDes;
         setPiecesCount('1');
       } else if (stg === 'impressao') {
-        defaultDes = designers.find((d) => (d.role || '').toLowerCase().includes('impress') || (d.role || '').toLowerCase().includes('rip'))?.id || defaultDes;
+        defaultDes = activeDesigners.find((d) => (d.role || '').toLowerCase().includes('impress') || (d.role || '').toLowerCase().includes('rip'))?.id || defaultDes;
         setPiecesCount(order?.totalPieces ? String(order.totalPieces) : '');
       }
       setDesignerId(defaultDes);
@@ -122,8 +121,8 @@ export function StageEntryModal({ isOpen, onClose, order, entry = null, initialS
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div 
-        className="modal-content" 
+      <div
+        className="modal-content"
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: '580px' }}
       >
@@ -241,7 +240,7 @@ export function StageEntryModal({ isOpen, onClose, order, entry = null, initialS
                   <option value="">Selecione o profissional...</option>
                   {designers.map((d) => (
                     <option key={d.id} value={d.id}>
-                      {d.name} ({d.role})
+                      {d.name} ({d.role}){d.active === false ? ' [Inativo]' : ''}
                     </option>
                   ))}
                 </select>
@@ -258,8 +257,7 @@ export function StageEntryModal({ isOpen, onClose, order, entry = null, initialS
                   value={date}
                   onChange={(e) => setDate(e.target.value)}
                   required
-                >
-                </input>
+                />
               </div>
             </div>
 

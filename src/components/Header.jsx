@@ -9,7 +9,6 @@ import {
   Layers, 
   Printer, 
   Download, 
-  RotateCcw,
   Database,
   Trash2
 } from 'lucide-react';

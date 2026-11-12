@@ -1,18 +1,29 @@
 import React, { useState } from 'react';
 import { useProduction } from '../context/ProductionContext';
-import { 
-  Users, 
-  UserPlus, 
-  Edit3, 
-  Trash2, 
-  PenTool, 
-  Layers, 
-  Printer, 
-  X
+import {
+  Users,
+  UserPlus,
+  Edit3,
+  Trash2,
+  PenTool,
+  Layers,
+  Printer,
+  X,
+  PauseCircle,
+  PlayCircle,
+  CalendarMinus
 } from 'lucide-react';
 
 export function TeamManagement() {
-  const { designers, addDesigner, updateDesigner, deleteDesigner, metrics } = useProduction();
+  const {
+    designers,
+    addDesigner,
+    updateDesigner,
+    deleteDesigner,
+    metrics,
+    workingDaysConfig,
+    setDesignerAbsenceDays
+  } = useProduction();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
@@ -24,7 +35,8 @@ export function TeamManagement() {
     avatarColor: '#3b82f6',
     goalCriacaoArtes: 8,
     goalExportacao: 10,
-    goalImpressaoPecas: 120
+    goalImpressaoPecas: 120,
+    active: true
   });
 
   const colorOptions = [
@@ -32,8 +44,10 @@ export function TeamManagement() {
     '#6366f1', // Indigo
     '#10b981', // Emerald
     '#f59e0b', // Amber
-    '#64748b', // Slate
-    '#0ea5e9'  // Sky
+    '#ec4899', // Pink
+    '#0ea5e9', // Sky
+    '#8b5cf6', // Violet
+    '#f43f5e'  // Rose
   ];
 
   const handleOpenNew = () => {
@@ -44,8 +58,9 @@ export function TeamManagement() {
       role: 'Designer Criação',
       avatarColor: colorOptions[Math.floor(Math.random() * colorOptions.length)],
       goalCriacaoArtes: 8,
-      goalExportacao: 10,
-      goalImpressaoPecas: 120
+      goalExportacao: 0,
+      goalImpressaoPecas: 0,
+      active: true
     });
     setIsFormOpen(true);
   };
@@ -59,7 +74,8 @@ export function TeamManagement() {
       avatarColor: designer.avatarColor || '#3b82f6',
       goalCriacaoArtes: designer.goalCriacaoArtes ?? 8,
       goalExportacao: designer.goalExportacao ?? 10,
-      goalImpressaoPecas: designer.goalImpressaoPecas ?? 120
+      goalImpressaoPecas: designer.goalImpressaoPecas ?? 120,
+      active: designer.active ?? true
     });
     setIsFormOpen(true);
   };
@@ -79,6 +95,11 @@ export function TeamManagement() {
     setIsFormOpen(false);
   };
 
+  const handleToggleActive = (designer) => {
+    const nextActive = designer.active === false;
+    updateDesigner(designer.id, { active: nextActive });
+  };
+
   const handleDelete = (id, name) => {
     if (window.confirm(`Tem certeza que deseja remover o(a) designer "${name}"? Os lançamentos existentes serão mantidos.`)) {
       deleteDesigner(id);
@@ -88,7 +109,7 @@ export function TeamManagement() {
   return (
     <div className="team-view">
       {/* Cabeçalho da Seção de Equipe */}
-      <div 
+      <div
         style={{
           background: 'var(--bg-secondary)',
           border: '1px solid var(--border-subtle)',
@@ -108,7 +129,7 @@ export function TeamManagement() {
             Equipe de Designers & Metas por Categoria
           </h2>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-            Metas específicas: <strong>Criação</strong> (artes diárias), <strong>Exportação</strong> (exportações diárias) e <strong>Impressão</strong> (peças impressas).
+            Metas específicas: <strong>Criação</strong> (artes diárias), <strong>Exportação</strong> (exportações diárias), <strong>Impressão</strong> (peças impressas) e abono de folgas/férias.
           </p>
         </div>
 
@@ -200,7 +221,7 @@ export function TeamManagement() {
 
                   <div className="form-group">
                     <label className="form-label">Cor de Identificação:</label>
-                    <div style={{ display: 'flex', gap: '8px', paddingTop: '4px' }}>
+                    <div style={{ display: 'flex', gap: '8px', paddingTop: '4px', flexWrap: 'wrap' }}>
                       {colorOptions.map((c) => (
                         <button
                           key={c}
@@ -299,15 +320,15 @@ export function TeamManagement() {
       )}
 
       {/* Grid de Cards dos Designers */}
-      <div 
+      <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))',
+          gridTemplateColumns: 'repeat(auto-fill, minmax(330px, 1fr))',
           gap: '16px'
         }}
       >
         {designers.length === 0 && (
-          <div 
+          <div
             style={{
               background: 'var(--bg-secondary)',
               border: '1px dashed var(--border-light)',
@@ -332,42 +353,51 @@ export function TeamManagement() {
 
         {designers.map((designer) => {
           const stats = metrics.designerStats.find((s) => s.id === designer.id);
+          const isPaused = designer.active === false;
+          const absenceDays = Number(workingDaysConfig?.designerAbsences?.[designer.id] || 0);
 
           return (
-            <div 
+            <div
               key={designer.id}
               style={{
                 background: 'var(--bg-secondary)',
-                border: '1px solid var(--border-subtle)',
+                border: isPaused ? '1px dashed var(--border-light)' : '1px solid var(--border-subtle)',
                 borderRadius: 'var(--radius-lg)',
                 padding: '18px',
                 display: 'flex',
                 flexDirection: 'column',
-                justifyContent: 'space-between'
+                justifyContent: 'space-between',
+                opacity: isPaused ? 0.72 : 1
               }}
             >
               {/* Header do Card */}
               <div>
                 <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', marginBottom: '14px' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <div 
+                    <div
                       className="avatar-badge"
                       style={{
                         width: '38px',
                         height: '38px',
                         fontSize: '1rem',
-                        background: 'var(--bg-surface-elevated)',
-                        color: 'var(--text-primary)'
+                        background: designer.avatarColor || '#3b82f6',
+                        color: '#ffffff',
+                        borderColor: 'rgba(255,255,255,0.2)'
                       }}
                     >
                       {designer.name.charAt(0)}
                     </div>
                     <div>
-                      <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      <h3 style={{ fontSize: '0.95rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                         {designer.name}
+                        {isPaused && (
+                          <span style={{ fontSize: '0.62rem', padding: '1px 6px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }}>
+                            Férias / Inativo
+                          </span>
+                        )}
                       </h3>
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
-                        {designer.nickname || designer.role}
+                        {designer.nickname ? `${designer.nickname} • ${designer.role}` : designer.role}
                       </div>
                     </div>
                   </div>
@@ -375,8 +405,15 @@ export function TeamManagement() {
                   <div style={{ display: 'flex', gap: '4px' }}>
                     <button
                       className="btn btn-secondary btn-icon-only btn-sm"
+                      onClick={() => handleToggleActive(designer)}
+                      title={isPaused ? 'Reativar designer na equipe' : 'Pausar designer (Férias / Afastamento)'}
+                    >
+                      {isPaused ? <PlayCircle size={13} color="#34d399" /> : <PauseCircle size={13} color="#fbbf24" />}
+                    </button>
+                    <button
+                      className="btn btn-secondary btn-icon-only btn-sm"
                       onClick={() => handleOpenEdit(designer)}
-                      title="Editar metas"
+                      title="Editar metas e dados"
                     >
                       <Edit3 size={13} />
                     </button>
@@ -391,13 +428,13 @@ export function TeamManagement() {
                 </div>
 
                 {/* Médias Diárias Reais por Categoria */}
-                <div 
+                <div
                   style={{
                     background: 'var(--bg-surface)',
                     border: '1px solid var(--border-subtle)',
                     borderRadius: 'var(--radius-md)',
                     padding: '10px 12px',
-                    marginBottom: '14px',
+                    marginBottom: '12px',
                     display: 'grid',
                     gridTemplateColumns: 'repeat(3, 1fr)',
                     gap: '6px',
@@ -433,6 +470,49 @@ export function TeamManagement() {
                   </div>
                 </div>
 
+                {/* Controle de Folgas / Faltas Abonadas no Período */}
+                <div
+                  style={{
+                    background: 'var(--bg-surface)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-sm)',
+                    padding: '7px 10px',
+                    marginBottom: '12px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '0.73rem'
+                  }}
+                  title="Desconta dias de folga ou atestado médico para não derrubar a média diária deste designer"
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--text-secondary)' }}>
+                    <CalendarMinus size={13} color="#38bdf8" />
+                    Folgas/Atestados no Período:
+                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '1px 6px', height: '22px', fontSize: '0.72rem' }}
+                      onClick={() => setDesignerAbsenceDays(designer.id, Math.max(0, absenceDays - 1))}
+                      disabled={absenceDays <= 0}
+                    >
+                      -
+                    </button>
+                    <strong style={{ minWidth: '42px', textAlign: 'center', color: absenceDays > 0 ? '#38bdf8' : 'var(--text-primary)' }}>
+                      {absenceDays} dia{absenceDays !== 1 ? 's' : ''}
+                    </strong>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '1px 6px', height: '22px', fontSize: '0.72rem' }}
+                      onClick={() => setDesignerAbsenceDays(designer.id, absenceDays + 1)}
+                    >
+                      +
+                    </button>
+                  </div>
+                </div>
+
                 {/* Metas Personalizadas Cadastradas */}
                 <div style={{ fontSize: '0.78rem', color: 'var(--text-secondary)' }}>
                   <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '4px' }}>
@@ -441,7 +521,7 @@ export function TeamManagement() {
                     </span>
                     {Number(designer.goalCriacaoArtes) > 0 ? (
                       <strong style={{ color: 'var(--text-primary)' }}>
-                        {designer.goalCriacaoArtes} artes/dia
+                        {designer.goalCriacaoArtes} artes/dia ({designer.goalCriacaoArtes * (metrics.totalMonthWorkingDays || 22)}/mês)
                       </strong>
                     ) : (
                       <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>— (Não se aplica)</span>
@@ -454,7 +534,7 @@ export function TeamManagement() {
                     </span>
                     {Number(designer.goalExportacao) > 0 ? (
                       <strong style={{ color: 'var(--text-primary)' }}>
-                        {designer.goalExportacao} exp/dia
+                        {designer.goalExportacao} exp/dia ({designer.goalExportacao * (metrics.totalMonthWorkingDays || 22)}/mês)
                       </strong>
                     ) : (
                       <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>— (Não se aplica)</span>
@@ -467,7 +547,7 @@ export function TeamManagement() {
                     </span>
                     {Number(designer.goalImpressaoPecas) > 0 ? (
                       <strong style={{ color: 'var(--text-primary)' }}>
-                        {designer.goalImpressaoPecas} peças/dia
+                        {designer.goalImpressaoPecas} pçs/dia ({(designer.goalImpressaoPecas * (metrics.totalMonthWorkingDays || 22)).toLocaleString('pt-BR')}/mês)
                       </strong>
                     ) : (
                       <span style={{ color: 'var(--text-muted)', fontSize: '0.72rem' }}>— (Não se aplica)</span>
@@ -477,7 +557,7 @@ export function TeamManagement() {
               </div>
 
               {/* Status do Membro */}
-              <div 
+              <div
                 style={{
                   marginTop: '14px',
                   paddingTop: '10px',
@@ -488,9 +568,11 @@ export function TeamManagement() {
                   fontSize: '0.75rem'
                 }}
               >
-                <span style={{ color: 'var(--text-muted)' }}>Desempenho Geral:</span>
-                <span style={{ fontWeight: 600, color: stats?.performanceStatus === 'Superando' ? 'var(--accent-emerald)' : stats?.performanceStatus === 'Na Meta' ? 'var(--text-primary)' : 'var(--accent-amber)' }}>
-                  {stats?.performanceStatus || 'Ativo'} ({stats ? stats.goalAchievementRate : 100}%)
+                <span style={{ color: 'var(--text-muted)' }}>
+                  Base: <strong>{stats ? stats.workingDays : metrics.workingDaysCount}d úteis</strong>
+                </span>
+                <span style={{ fontWeight: 600, color: isPaused ? 'var(--text-muted)' : stats?.performanceStatus === 'Superando' ? 'var(--accent-emerald)' : stats?.performanceStatus === 'Na Meta' ? 'var(--text-primary)' : 'var(--accent-amber)' }}>
+                  {isPaused ? 'Pausado / Férias' : `${stats?.performanceStatus || 'Ativo'} (${stats ? stats.goalAchievementRate : 100}%)`}
                 </span>
               </div>
             </div>

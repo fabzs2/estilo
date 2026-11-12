@@ -15,16 +15,12 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
-  Clock,
-  Tag,
-  Package,
   Plus,
   FileText
 } from 'lucide-react';
 
-export function OrdersTable({ onOpenQuickEntry }) {
+export function OrdersTable() {
   const { 
-    orders,
     filteredOrders, 
     designers, 
     selectedStageFilter, 
@@ -640,6 +636,7 @@ export function OrdersTable({ onOpenQuickEntry }) {
                                   {orderEntries.map((entry, idx) => {
                                     const entryStage = STAGES[entry.stage] || STAGES.criacao;
                                     const entryWork = WORK_TYPES[entry.workType || 'arte_nova'] || WORK_TYPES.arte_nova;
+                                    const entryDesigner = designers.find((d) => d.id === entry.designerId);
 
                                     return (
                                       <div
@@ -678,7 +675,14 @@ export function OrdersTable({ onOpenQuickEntry }) {
                                           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
                                             <div
                                               className="avatar-badge"
-                                              style={{ width: '22px', height: '22px', fontSize: '0.68rem' }}
+                                              style={{
+                                                width: '22px',
+                                                height: '22px',
+                                                fontSize: '0.68rem',
+                                                background: entryDesigner?.avatarColor || 'var(--bg-surface-elevated)',
+                                                color: '#ffffff',
+                                                borderColor: 'rgba(255,255,255,0.2)'
+                                              }}
                                             >
                                               {(entry.designerName || 'D').charAt(0)}
                                             </div>

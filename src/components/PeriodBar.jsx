@@ -1,20 +1,32 @@
 import React from 'react';
 import { useProduction } from '../context/ProductionContext';
-import { Calendar, Clock, BarChart2, CheckCircle2 } from 'lucide-react';
+import { Calendar, Clock, SlidersHorizontal } from 'lucide-react';
 
 export function PeriodBar() {
-  const { 
-    periodFilter, 
-    setPeriodFilter, 
-    customRange, 
-    setCustomRange, 
-    dateBounds,
-    metrics 
+  const {
+    periodFilter,
+    setPeriodFilter,
+    customRange,
+    setCustomRange,
+    metrics,
+    workingDaysConfig,
+    setIsSectorGoalsModalOpen
   } = useProduction();
 
   const handlePeriodChange = (filter) => {
     setPeriodFilter(filter);
   };
+
+  const modeLabel =
+    workingDaysConfig?.mode === 'calendar'
+      ? workingDaysConfig.includeSaturday
+        ? 'Seg–Sáb (S/ Feriados)'
+        : 'Dias Úteis Reais (Seg–Sex)'
+      : workingDaysConfig?.mode === 'manual'
+      ? 'Dias Úteis Fixos'
+      : 'Dias c/ Lançamento';
+
+  const holidaysDiscountedCount = metrics.discountedHolidaysInPeriod?.length || 0;
 
   return (
     <div className="period-bar">
@@ -92,16 +104,49 @@ export function PeriodBar() {
         )}
       </div>
 
-      {/* Indicador de Resumo */}
-      <div className="period-info-tag">
-        <Clock size={13} color="var(--text-muted)" />
-        <span>
-          Base: <strong>{metrics.workingDaysCount} dia(s) com registro</strong>
-        </span>
+      {/* Indicador de Dias Úteis Reais & Botão de Configuração */}
+      <div className="period-info-tag" style={{ flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Clock size={13} color="var(--accent-blue)" />
+          <span>
+            Base:{' '}
+            <strong>
+              {periodFilter === 'this_month' && workingDaysConfig?.mode === 'calendar'
+                ? `${metrics.workingDaysCount} de ${metrics.totalMonthWorkingDays} dias úteis no mês`
+                : `${metrics.workingDaysCount} dia(s) úteis`}
+            </strong>
+          </span>
+          <span
+            style={{
+              fontSize: '0.68rem',
+              padding: '1px 6px',
+              borderRadius: '4px',
+              background: 'var(--bg-surface)',
+              border: '1px solid var(--border-subtle)',
+              color: 'var(--text-secondary)'
+            }}
+          >
+            {modeLabel}
+            {holidaysDiscountedCount > 0 ? ` • -${holidaysDiscountedCount} feriado(s)` : ''}
+          </span>
+        </div>
+
         <span style={{ color: 'var(--border-subtle)' }}>•</span>
+
         <span>
           Pedidos: <strong>{metrics.totalOrders}</strong>
         </span>
+
+        <button
+          type="button"
+          className="btn btn-secondary btn-sm"
+          style={{ padding: '3px 9px', fontSize: '0.72rem', gap: '5px' }}
+          onClick={() => setIsSectorGoalsModalOpen(true)}
+          title="Configurar Dias Úteis Reais, Feriados e Metas Mensais"
+        >
+          <SlidersHorizontal size={12} color="var(--accent-blue)" />
+          Dias Úteis & Metas
+        </button>
       </div>
     </div>
   );

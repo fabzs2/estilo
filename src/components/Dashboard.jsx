@@ -1,33 +1,29 @@
 import React, { useState, useEffect } from 'react';
 import { useProduction } from '../context/ProductionContext';
-import { 
-  TrendingUp, 
-  Layers, 
-  Printer, 
-  Award, 
-  Ruler, 
-  Shirt, 
-  PlusCircle, 
+import {
+  TrendingUp,
+  Layers,
+  Printer,
+  Award,
+  PlusCircle,
   ChevronRight,
-  PenTool, 
+  PenTool,
   Target,
   Clock,
-  Calendar,
-  Tag,
   RefreshCw
 } from 'lucide-react';
 
 import 'chart.js/auto';
 import { Bar, Doughnut } from 'react-chartjs-2';
 
-export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
-  const { 
-    metrics, 
-    periodFilter, 
-    dateBounds, 
-    setIsQuickEntryOpen, 
+export function Dashboard({ onSelectDesigner, onGoToTeam }) {
+  const {
+    metrics,
+    periodFilter,
+    dateBounds,
+    setIsQuickEntryOpen,
     setSelectedDesignerFilter,
-    setIsSectorGoalsModalOpen 
+    setIsSectorGoalsModalOpen
   } = useProduction();
   const [isLoading, setIsLoading] = useState(false);
 
@@ -252,7 +248,7 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
   return (
     <div className={`dashboard-view ${isLoading ? 'opacity-80' : ''}`} style={{ transition: 'opacity 0.15s ease' }}>
       {/* Barra de Título das Metas por Categoria */}
-      <div 
+      <div
         style={{
           display: 'flex',
           alignItems: 'center',
@@ -264,11 +260,11 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
       >
         <div>
           <h2 style={{ fontSize: '1.15rem', fontWeight: 600, color: 'var(--text-primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <TrendingUp size={18} color="var(--accent-sky)" />
+            <TrendingUp size={18} color="var(--accent-blue)" />
             Metas & Médias por Categoria ({dateBounds.label})
           </h2>
           <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-            <strong>Criação:</strong> artes diárias • <strong>Exportação:</strong> exportações diárias • <strong>Impressão:</strong> somente peças impressas
+            <strong>Criação:</strong> artes diárias • <strong>Exportação:</strong> exportações diárias • <strong>Impressão:</strong> somente peças impressas • <strong>Base:</strong> {metrics.workingDaysCount}d úteis ({metrics.totalMonthWorkingDays}d no mês)
           </p>
         </div>
 
@@ -276,10 +272,10 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
           id="btn-adjust-sector-goals"
           className="btn btn-secondary btn-sm"
           onClick={() => setIsSectorGoalsModalOpen(true)}
-          title="Personalizar metas diárias globais do setor"
+          title="Personalizar metas diárias e dias úteis reais do mês"
         >
-          <Target size={14} color="var(--accent-sky)" />
-          Personalizar Metas do Setor
+          <Target size={14} color="var(--accent-blue)" />
+          Metas & Dias Úteis Reais
         </button>
       </div>
 
@@ -299,17 +295,23 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
             ) : (
               <div className="kpi-value">
                 {metrics.teamDailyAvgCriacao}
-                <span className="kpi-unit">artes / dia</span>
+                <span className="kpi-unit">artes / dia útil</span>
               </div>
             )}
           </div>
-          <div className="kpi-footer">
-            <span className="kpi-badge badge-neutral">
-              Meta: {metrics.teamDailyGoalCriacao} artes/dia
-            </span>
-            <span style={{ color: metrics.teamDailyGoalCriacao > 0 && metrics.teamDailyAvgCriacao >= metrics.teamDailyGoalCriacao ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
-              {metrics.stageCounts.criacao} artes ({metrics.teamDailyGoalCriacao > 0 ? Math.round((metrics.teamDailyAvgCriacao / metrics.teamDailyGoalCriacao) * 100) : 100}%)
-            </span>
+          <div className="kpi-footer" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="kpi-badge badge-neutral">
+                Meta: {metrics.teamDailyGoalCriacao}/dia
+              </span>
+              <span style={{ color: metrics.teamDailyGoalCriacao > 0 && metrics.teamDailyAvgCriacao >= metrics.teamDailyGoalCriacao ? 'var(--accent-emerald)' : 'var(--text-muted)', fontWeight: 600 }}>
+                {metrics.stageCounts.criacao} artes ({metrics.teamDailyGoalCriacao > 0 ? Math.round((metrics.teamDailyAvgCriacao / metrics.teamDailyGoalCriacao) * 100) : 100}%)
+              </span>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+              <span>Meta Mês ({metrics.totalMonthWorkingDays}d): <strong>{metrics.monthGoalCriacao}</strong></span>
+              <span>Esperado hoje ({metrics.workingDaysCount}d): <strong>{metrics.elapsedGoalCriacao}</strong></span>
+            </div>
           </div>
         </div>
 
@@ -327,17 +329,23 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
             ) : (
               <div className="kpi-value">
                 {metrics.teamDailyAvgExportacao}
-                <span className="kpi-unit">exp / dia</span>
+                <span className="kpi-unit">exp / dia útil</span>
               </div>
             )}
           </div>
-          <div className="kpi-footer">
-            <span className="kpi-badge badge-neutral">
-              Meta: {metrics.teamDailyGoalExportacao} exp/dia
-            </span>
-            <span style={{ color: metrics.teamDailyGoalExportacao > 0 && metrics.teamDailyAvgExportacao >= metrics.teamDailyGoalExportacao ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
-              {metrics.stageCounts.exportacao} fechamentos ({metrics.teamDailyGoalExportacao > 0 ? Math.round((metrics.teamDailyAvgExportacao / metrics.teamDailyGoalExportacao) * 100) : 100}%)
-            </span>
+          <div className="kpi-footer" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="kpi-badge badge-neutral">
+                Meta: {metrics.teamDailyGoalExportacao}/dia
+              </span>
+              <span style={{ color: metrics.teamDailyGoalExportacao > 0 && metrics.teamDailyAvgExportacao >= metrics.teamDailyGoalExportacao ? 'var(--accent-emerald)' : 'var(--text-muted)', fontWeight: 600 }}>
+                {metrics.stageCounts.exportacao} fech. ({metrics.teamDailyGoalExportacao > 0 ? Math.round((metrics.teamDailyAvgExportacao / metrics.teamDailyGoalExportacao) * 100) : 100}%)
+              </span>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+              <span>Meta Mês ({metrics.totalMonthWorkingDays}d): <strong>{metrics.monthGoalExportacao}</strong></span>
+              <span>Esperado hoje ({metrics.workingDaysCount}d): <strong>{metrics.elapsedGoalExportacao}</strong></span>
+            </div>
           </div>
         </div>
 
@@ -355,17 +363,23 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
             ) : (
               <div className="kpi-value">
                 {metrics.teamDailyAvgImpressaoPieces}
-                <span className="kpi-unit">peças / dia</span>
+                <span className="kpi-unit">peças / dia útil</span>
               </div>
             )}
           </div>
-          <div className="kpi-footer">
-            <span className="kpi-badge badge-neutral">
-              Meta: {metrics.teamDailyGoalImpressaoPieces} peças/dia
-            </span>
-            <span style={{ color: metrics.teamDailyGoalImpressaoPieces > 0 && metrics.teamDailyAvgImpressaoPieces >= metrics.teamDailyGoalImpressaoPieces ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
-              {metrics.impressaoTotalPieces.toLocaleString('pt-BR')} peças ({metrics.teamDailyGoalImpressaoPieces > 0 ? Math.round((metrics.teamDailyAvgImpressaoPieces / metrics.teamDailyGoalImpressaoPieces) * 100) : 100}%)
-            </span>
+          <div className="kpi-footer" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '4px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span className="kpi-badge badge-neutral">
+                Meta: {metrics.teamDailyGoalImpressaoPieces}/dia
+              </span>
+              <span style={{ color: metrics.teamDailyGoalImpressaoPieces > 0 && metrics.teamDailyAvgImpressaoPieces >= metrics.teamDailyGoalImpressaoPieces ? 'var(--accent-emerald)' : 'var(--text-muted)', fontWeight: 600 }}>
+                {metrics.impressaoTotalPieces.toLocaleString('pt-BR')} pçs ({metrics.teamDailyGoalImpressaoPieces > 0 ? Math.round((metrics.teamDailyAvgImpressaoPieces / metrics.teamDailyGoalImpressaoPieces) * 100) : 100}%)
+              </span>
+            </div>
+            <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+              <span>Meta Mês ({metrics.totalMonthWorkingDays}d): <strong>{metrics.monthGoalImpressaoPieces.toLocaleString('pt-BR')}</strong></span>
+              <span>Esperado hoje ({metrics.workingDaysCount}d): <strong>{metrics.elapsedGoalImpressaoPieces.toLocaleString('pt-BR')}</strong></span>
+            </div>
           </div>
         </div>
 
@@ -383,7 +397,7 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
             ) : (
               <div className="kpi-value">
                 {metrics.totalOrders}
-                <span className="kpi-unit">pedidos</span>
+                <span className="kpi-unit">pedidos únicos</span>
               </div>
             )}
           </div>
@@ -430,8 +444,8 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
               {metrics.leadTimeStats?.completedCyclesCount || 0} pedido(s) 100% impressos
             </span>
             <span>
-              {metrics.leadTimeStats?.avgDaysToExport !== null 
-                ? `Média Arte→Exp: ${metrics.leadTimeStats.avgDaysToExport}d` 
+              {metrics.leadTimeStats?.avgDaysToExport !== null
+                ? `Média Arte→Exp: ${metrics.leadTimeStats.avgDaysToExport}d`
                 : `${metrics.leadTimeStats?.totalTrackedOrders || 0} pedidos rastreados`}
             </span>
           </div>
@@ -451,32 +465,32 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
             ) : (
               <div className="kpi-value">
                 {metrics.reworkStats?.reworkRate || 0}%
-                <span className="kpi-unit">reprovações / ajustes</span>
+                <span className="kpi-unit">dos pedidos c/ ajuste</span>
               </div>
             )}
           </div>
           <div className="kpi-footer" style={{ flexDirection: 'column', alignItems: 'stretch', gap: '6px' }}>
             {/* Barra de distribuição proporcional */}
             <div style={{ display: 'flex', height: '5px', borderRadius: '3px', overflow: 'hidden', background: 'var(--bg-surface)' }}>
-              <div 
-                style={{ 
-                  width: `${metrics.totalOrders > 0 ? ((metrics.reworkStats?.arteNova || 0) / metrics.totalOrders) * 100 : 100}%`, 
-                  background: '#38bdf8' 
-                }} 
+              <div
+                style={{
+                  width: `${metrics.totalOrders > 0 ? ((metrics.reworkStats?.arteNova || 0) / metrics.totalOrders) * 100 : 100}%`,
+                  background: '#38bdf8'
+                }}
                 title={`Artes Novas: ${metrics.reworkStats?.arteNova || 0}`}
               />
-              <div 
-                style={{ 
-                  width: `${metrics.totalOrders > 0 ? ((metrics.reworkStats?.ajusteRefacao || 0) / metrics.totalOrders) * 100 : 0}%`, 
-                  background: '#fbbf24' 
-                }} 
+              <div
+                style={{
+                  width: `${metrics.totalOrders > 0 ? ((metrics.reworkStats?.ajusteRefacao || 0) / metrics.totalOrders) * 100 : 0}%`,
+                  background: '#fbbf24'
+                }}
                 title={`Ajustes / Refações: ${metrics.reworkStats?.ajusteRefacao || 0}`}
               />
-              <div 
-                style={{ 
-                  width: `${metrics.totalOrders > 0 ? ((metrics.reworkStats?.reposicao || 0) / metrics.totalOrders) * 100 : 0}%`, 
-                  background: '#f87171' 
-                }} 
+              <div
+                style={{
+                  width: `${metrics.totalOrders > 0 ? ((metrics.reworkStats?.reposicao || 0) / metrics.totalOrders) * 100 : 0}%`,
+                  background: '#f87171'
+                }}
                 title={`Reposições: ${metrics.reworkStats?.reposicao || 0}`}
               />
             </div>
@@ -586,7 +600,8 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
               <tr>
                 <th style={{ width: '45px' }}>Pos.</th>
                 <th>Designer</th>
-                <th style={{ textAlign: 'center' }}>Total Pedidos</th>
+                <th style={{ textAlign: 'center' }}>Dias Úteis</th>
+                <th style={{ textAlign: 'center' }}>Pedidos</th>
                 <th style={{ textAlign: 'center' }}>
                   <span style={{ color: '#60a5fa' }}>🎨 Criação (Artes)</span>
                 </th>
@@ -603,16 +618,16 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
             <tbody>
               {metrics.rankedDesigners.length === 0 ? (
                 <tr>
-                  <td colSpan="8" style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--text-muted)' }}>
+                  <td colSpan="9" style={{ textAlign: 'center', padding: '36px 20px', color: 'var(--text-muted)' }}>
                     <div style={{ fontSize: '0.85rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px' }}>
                       Nenhum designer cadastrado no momento
                     </div>
                     <p style={{ fontSize: '0.78rem', marginBottom: '14px' }}>
                       Adicione os designers da sua equipe para definir metas personalizadas por categoria.
                     </p>
-                    <button 
+                    <button
                       className="btn btn-primary btn-sm"
-                      onClick={() => onSelectDesigner && onSelectDesigner()}
+                      onClick={() => (onGoToTeam ? onGoToTeam() : onSelectDesigner && onSelectDesigner())}
                     >
                       + Cadastrar Designers na Aba Equipe
                     </button>
@@ -620,15 +635,17 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
                 </tr>
               ) : (
                 metrics.rankedDesigners.map((designer, index) => {
-                  const statusColor =
-                    designer.performanceStatus === 'Superando'
-                      ? 'var(--accent-emerald)'
-                      : designer.performanceStatus === 'Na Meta'
-                      ? 'var(--text-primary)'
-                      : 'var(--accent-amber)';
+                  const isPaused = designer.active === false;
+                  const statusColor = isPaused
+                    ? 'var(--text-muted)'
+                    : designer.performanceStatus === 'Superando'
+                    ? 'var(--accent-emerald)'
+                    : designer.performanceStatus === 'Na Meta'
+                    ? 'var(--text-primary)'
+                    : 'var(--accent-amber)';
 
                   return (
-                    <tr key={designer.id}>
+                    <tr key={designer.id} style={{ opacity: isPaused ? 0.65 : 1 }}>
                       {/* Posição */}
                       <td style={{ fontWeight: 600, color: 'var(--text-muted)' }}>
                         #{index + 1}
@@ -637,14 +654,40 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
                       {/* Designer */}
                       <td>
                         <div className="designer-cell">
-                          <div className="avatar-badge">
+                          <div
+                            className="avatar-badge"
+                            style={{
+                              background: designer.avatarColor || 'var(--bg-surface-elevated)',
+                              color: '#ffffff',
+                              borderColor: 'rgba(255,255,255,0.18)'
+                            }}
+                          >
                             {designer.name.charAt(0)}
                           </div>
                           <div className="designer-details">
-                            <div className="designer-name">{designer.name}</div>
+                            <div className="designer-name" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                              {designer.name}
+                              {isPaused && (
+                                <span style={{ fontSize: '0.62rem', padding: '1px 5px', borderRadius: '4px', background: 'rgba(245, 158, 11, 0.15)', color: '#fbbf24' }}>
+                                  Férias / Inativo
+                                </span>
+                              )}
+                            </div>
                             <div className="designer-role">{designer.role}</div>
                           </div>
                         </div>
+                      </td>
+
+                      {/* Dias Úteis Considerados */}
+                      <td style={{ textAlign: 'center', fontSize: '0.76rem' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--text-primary)' }}>
+                          {designer.workingDays}d
+                        </div>
+                        {designer.absenceDays > 0 && (
+                          <div style={{ fontSize: '0.64rem', color: '#38bdf8' }} title="Folgas ou atestados abonados da meta">
+                            (-{designer.absenceDays}d abonado)
+                          </div>
+                        )}
                       </td>
 
                       {/* Pedidos no Período */}
@@ -663,7 +706,7 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
                               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}> / {designer.goalCriacaoArtes} artes</span>
                             </div>
                             <div style={{ fontSize: '0.68rem', color: designer.rateCriacao >= 100 ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
-                              {designer.rateCriacao}% da meta
+                              {designer.criacaoCount} no período ({designer.rateCriacao}%)
                             </div>
                           </div>
                         ) : (
@@ -682,7 +725,7 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
                               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}> / {designer.goalExportacao} exp</span>
                             </div>
                             <div style={{ fontSize: '0.68rem', color: designer.rateExportacao >= 100 ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
-                              {designer.rateExportacao}% da meta
+                              {designer.exportacaoCount} no período ({designer.rateExportacao}%)
                             </div>
                           </div>
                         ) : (
@@ -701,7 +744,7 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
                               <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}> / {designer.goalImpressaoPecas} pçs</span>
                             </div>
                             <div style={{ fontSize: '0.68rem', color: designer.rateImpressao >= 100 ? 'var(--accent-emerald)' : 'var(--text-muted)' }}>
-                              {designer.rateImpressao}% da meta
+                              {designer.impressaoPieces} pçs ({designer.rateImpressao}%)
                             </div>
                           </div>
                         ) : (
@@ -712,7 +755,7 @@ export function Dashboard({ onSelectDesigner, onOpenQuickEntry }) {
                       {/* Status */}
                       <td style={{ textAlign: 'center' }}>
                         <span className="stage-badge" style={{ color: statusColor }}>
-                          {designer.performanceStatus} ({designer.goalAchievementRate}%)
+                          {isPaused ? 'Pausado' : `${designer.performanceStatus} (${designer.goalAchievementRate}%)`}
                         </span>
                       </td>
 

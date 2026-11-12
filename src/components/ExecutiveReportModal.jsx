@@ -1,10 +1,9 @@
 import React, { useState } from 'react';
 import { useProduction } from '../context/ProductionContext';
-import { STAGES } from '../constants/initialData';
-import { 
-  Printer, 
-  X, 
-  Copy, 
+import {
+  Printer,
+  X,
+  Copy,
   Check
 } from 'lucide-react';
 
@@ -22,22 +21,26 @@ export function ExecutiveReportModal() {
     window.print();
   };
 
+  const todayBR = new Date().toLocaleDateString('pt-BR');
+
   // Texto formatado pronto para enviar no WhatsApp ou e-mail do chefe
   const generateTextMessage = () => {
-    const todayBR = new Date().toLocaleDateString('pt-BR');
     let text = `*RELATÓRIO DE PRODUÇÃO - SETOR DE DESIGN (${dateBounds.label.toUpperCase()})*\n`;
     text += `📅 Data de Emissão: ${todayBR}\n`;
-    text += `📊 Base de Cálculo: ${metrics.workingDaysCount} dia(s) úteis trabalhados\n\n`;
+    text += `📊 Base de Cálculo: ${metrics.workingDaysCount} dia(s) úteis considerados (${metrics.totalMonthWorkingDays} dias úteis no mês)\n\n`;
     text += `*RESUMO GERAL POR CATEGORIA:*\n`;
-    text += `• Total de Pedidos Concluídos: ${metrics.totalOrders}\n`;
-    text += `• Criação: ${metrics.stageCounts.criacao} artes (Média: ${metrics.teamDailyAvgCriacao} artes/dia | Meta: ${metrics.teamDailyGoalCriacao}/dia)\n`;
-    text += `• Exportação: ${metrics.stageCounts.exportacao} fechamentos (Média: ${metrics.teamDailyAvgExportacao} exp/dia | Meta: ${metrics.teamDailyGoalExportacao}/dia)\n`;
-    text += `• Impressão: ${metrics.impressaoTotalPieces.toLocaleString('pt-BR')} peças impressas (Média: ${metrics.teamDailyAvgImpressaoPieces} peças/dia | Meta: ${metrics.teamDailyGoalImpressaoPieces}/dia)\n`;
-    text += `• Metragem Rodada (Plotter): ${metrics.totalMeters}m lineares\n\n`;
+    text += `• Total de Pedidos Únicos: ${metrics.totalOrders}\n`;
+    text += `• Criação: ${metrics.stageCounts.criacao} artes (Média: ${metrics.teamDailyAvgCriacao}/dia | Meta Diária: ${metrics.teamDailyGoalCriacao} | Meta Mês: ${metrics.monthGoalCriacao})\n`;
+    text += `• Exportação: ${metrics.stageCounts.exportacao} fechamentos (Média: ${metrics.teamDailyAvgExportacao}/dia | Meta Diária: ${metrics.teamDailyGoalExportacao} | Meta Mês: ${metrics.monthGoalExportacao})\n`;
+    text += `• Impressão: ${metrics.impressaoTotalPieces.toLocaleString('pt-BR')} peças (Média: ${metrics.teamDailyAvgImpressaoPieces}/dia | Meta Diária: ${metrics.teamDailyGoalImpressaoPieces} | Meta Mês: ${metrics.monthGoalImpressaoPieces.toLocaleString('pt-BR')})\n`;
+    text += `• Metragem Rodada (Plotter): ${metrics.totalMeters}m lineares\n`;
+    text += `• Taxa de Refação/Ajustes: ${metrics.reworkStats?.reworkRate || 0}%\n\n`;
     text += `*DESEMPENHO INDIVIDUAL POR DESIGNER:*\n`;
 
     metrics.rankedDesigners.forEach((d, idx) => {
-      text += `${idx + 1}. *${d.name}* (${d.role})\n`;
+      const pausedTag = d.active === false ? ' [PAUSADO/FÉRIAS]' : '';
+      const absenceTag = d.absenceDays > 0 ? ` (${d.workingDays}d úteis, -${d.absenceDays}d abonado)` : ` (${d.workingDays}d úteis)`;
+      text += `${idx + 1}. *${d.name}* (${d.role})${pausedTag}${absenceTag}\n`;
       text += `   - Entregas no período: ${d.ordersCount} pedidos\n`;
       if (d.goalCriacaoArtes > 0) {
         text += `   - 🎨 Criação: ${d.dailyAvgCriacao} artes/dia (Meta: ${d.goalCriacaoArtes}/dia - ${d.rateCriacao}%)\n`;
@@ -63,8 +66,8 @@ export function ExecutiveReportModal() {
 
   return (
     <div className="modal-overlay" onClick={handleClose}>
-      <div 
-        className="modal-content modal-lg" 
+      <div
+        className="modal-content modal-lg"
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: '840px' }}
       >
@@ -102,7 +105,7 @@ export function ExecutiveReportModal() {
         {/* Conteúdo Imprimível do Relatório */}
         <div className="modal-body" style={{ padding: '24px 28px' }}>
           {/* Cabeçalho Oficial */}
-          <div 
+          <div
             style={{
               borderBottom: '1px solid var(--border-light)',
               paddingBottom: '14px',
@@ -123,13 +126,13 @@ export function ExecutiveReportModal() {
               </div>
             </div>
             <div style={{ textAlign: 'right', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              <div><strong>Período:</strong> {dateBounds.label}</div>
-              <div><strong>Emissão:</strong> {new Date().toLocaleDateString('pt-BR')}</div>
+              <div><strong>Período:</strong> {dateBounds.label} ({metrics.workingDaysCount}d úteis / {metrics.totalMonthWorkingDays}d no mês)</div>
+              <div><strong>Emissão:</strong> {todayBR}</div>
             </div>
           </div>
 
           {/* Resumo em Destaque */}
-          <div 
+          <div
             style={{
               background: 'var(--bg-surface)',
               border: '1px solid var(--border-subtle)',
@@ -150,17 +153,17 @@ export function ExecutiveReportModal() {
             <div>
               <div style={{ fontSize: '0.7rem', color: '#60a5fa', textTransform: 'uppercase', fontWeight: 600 }}>Criação (Artes)</div>
               <div style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)' }}>{metrics.teamDailyAvgCriacao}</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>artes/dia (Meta: {metrics.teamDailyGoalCriacao})</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>artes/dia (Meta: {metrics.teamDailyGoalCriacao} | Mês: {metrics.monthGoalCriacao})</div>
             </div>
             <div>
               <div style={{ fontSize: '0.7rem', color: '#a78bfa', textTransform: 'uppercase', fontWeight: 600 }}>Exportação (Exp.)</div>
               <div style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)' }}>{metrics.teamDailyAvgExportacao}</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>exp/dia (Meta: {metrics.teamDailyGoalExportacao})</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>exp/dia (Meta: {metrics.teamDailyGoalExportacao} | Mês: {metrics.monthGoalExportacao})</div>
             </div>
             <div>
               <div style={{ fontSize: '0.7rem', color: '#34d399', textTransform: 'uppercase', fontWeight: 600 }}>Impressão (Peças)</div>
               <div style={{ fontSize: '1.45rem', fontWeight: 700, color: 'var(--text-primary)' }}>{metrics.teamDailyAvgImpressaoPieces}</div>
-              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>peças/dia (Meta: {metrics.teamDailyGoalImpressaoPieces})</div>
+              <div style={{ fontSize: '0.68rem', color: 'var(--text-muted)' }}>peças/dia (Meta: {metrics.teamDailyGoalImpressaoPieces} | Mês: {metrics.monthGoalImpressaoPieces.toLocaleString('pt-BR')})</div>
             </div>
           </div>
 
@@ -174,21 +177,21 @@ export function ExecutiveReportModal() {
                 <div style={{ fontSize: '0.75rem', color: '#60a5fa', fontWeight: 600 }}>Criação de Arte</div>
                 <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>{metrics.stageCounts.criacao} artes criadas</div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  Média: {metrics.teamDailyAvgCriacao} artes/dia • Meta setor: {metrics.teamDailyGoalCriacao}/dia
+                  Média: {metrics.teamDailyAvgCriacao}/dia • Meta Mês ({metrics.totalMonthWorkingDays}d): {metrics.monthGoalCriacao}
                 </div>
               </div>
               <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', padding: '10px 12px', borderRadius: 'var(--radius-sm)' }}>
                 <div style={{ fontSize: '0.75rem', color: '#a78bfa', fontWeight: 600 }}>Exportação / Fechamento</div>
                 <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>{metrics.stageCounts.exportacao} fechamentos</div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  Média: {metrics.teamDailyAvgExportacao} exp/dia • Meta setor: {metrics.teamDailyGoalExportacao}/dia
+                  Média: {metrics.teamDailyAvgExportacao}/dia • Meta Mês ({metrics.totalMonthWorkingDays}d): {metrics.monthGoalExportacao}
                 </div>
               </div>
               <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border-subtle)', padding: '10px 12px', borderRadius: 'var(--radius-sm)' }}>
                 <div style={{ fontSize: '0.75rem', color: '#34d399', fontWeight: 600 }}>Impressão / Plotter</div>
                 <div style={{ fontSize: '1.2rem', fontWeight: 700 }}>{metrics.impressaoTotalPieces.toLocaleString('pt-BR')} peças impressas</div>
                 <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                  Média: {metrics.teamDailyAvgImpressaoPieces} peças/dia • Meta setor: {metrics.teamDailyGoalImpressaoPieces}/dia
+                  Média: {metrics.teamDailyAvgImpressaoPieces}/dia • Meta Mês ({metrics.totalMonthWorkingDays}d): {metrics.monthGoalImpressaoPieces.toLocaleString('pt-BR')}
                 </div>
               </div>
             </div>
@@ -205,6 +208,7 @@ export function ExecutiveReportModal() {
                   <tr>
                     <th>Designer</th>
                     <th>Especialidade</th>
+                    <th style={{ textAlign: 'center' }}>Dias Úteis</th>
                     <th style={{ textAlign: 'center' }}>Pedidos</th>
                     <th style={{ textAlign: 'center' }}>Criação (Artes/dia)</th>
                     <th style={{ textAlign: 'center' }}>Exportação (Exp/dia)</th>
@@ -215,8 +219,14 @@ export function ExecutiveReportModal() {
                 <tbody>
                   {metrics.rankedDesigners.map((d) => (
                     <tr key={d.id}>
-                      <td style={{ fontWeight: 600 }}>{d.name}</td>
+                      <td style={{ fontWeight: 600 }}>
+                        {d.name}
+                        {d.active === false ? ' (Férias)' : ''}
+                      </td>
                       <td style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{d.role}</td>
+                      <td style={{ textAlign: 'center', fontSize: '0.75rem' }}>
+                        {d.workingDays}d{d.absenceDays > 0 ? ` (-${d.absenceDays}d)` : ''}
+                      </td>
                       <td style={{ textAlign: 'center', fontWeight: 600 }}>{d.ordersCount}</td>
                       <td style={{ textAlign: 'center' }}>
                         {d.goalCriacaoArtes > 0 ? (
@@ -235,7 +245,7 @@ export function ExecutiveReportModal() {
                       </td>
                       <td style={{ textAlign: 'center' }}>
                         <span style={{ fontSize: '0.72rem', fontWeight: 500 }}>
-                          {d.performanceStatus} ({d.goalAchievementRate}%)
+                          {d.active === false ? 'Pausado' : `${d.performanceStatus} (${d.goalAchievementRate}%)`}
                         </span>
                       </td>
                     </tr>
@@ -246,7 +256,7 @@ export function ExecutiveReportModal() {
           </div>
 
           {/* Assinatura / Rodapé */}
-          <div 
+          <div
             style={{
               marginTop: '30px',
               paddingTop: '16px',

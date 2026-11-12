@@ -45,6 +45,7 @@ export function AppContent() {
         {activeTab === 'dashboard' && (
           <Dashboard
             onSelectDesigner={() => setActiveTab('orders')}
+            onGoToTeam={() => setActiveTab('team')}
           />
         )}
 

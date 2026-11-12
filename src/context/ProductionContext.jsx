@@ -1,12 +1,21 @@
 import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
-import { INITIAL_DESIGNERS, INITIAL_ORDERS, STAGES, WORK_TYPES } from '../constants/initialData';
-import { 
-  supabase, 
-  isSupabaseConfigured, 
-  mapDesignerFromDB, 
-  mapDesignerToDB, 
-  mapEntryFromDB, 
-  mapEntryToDB 
+import {
+  INITIAL_DESIGNERS,
+  INITIAL_ORDERS,
+  STAGES,
+  WORK_TYPES,
+  getLocalDateStr,
+  getBrazilianHolidays,
+  calculateBusinessDays,
+  getSampleData
+} from '../constants/initialData';
+import {
+  supabase,
+  isSupabaseConfigured,
+  mapDesignerFromDB,
+  mapDesignerToDB,
+  mapEntryFromDB,
+  mapEntryToDB
 } from '../lib/supabase';
 
 export const ProductionContext = createContext(null);
@@ -22,7 +31,8 @@ export function useProduction() {
 const STORAGE_KEYS = {
   ORDERS: 'designflow_orders_v3',
   ENTRIES: 'designflow_entries_v2', // Fallback e compatibilidade
-  DESIGNERS: 'designflow_designers_v2'
+  DESIGNERS: 'designflow_designers_v2',
+  WORKING_DAYS: 'designflow_working_days_config'
 };
 
 // Função de migração segura: Agrupa lançamentos legados pelo número do pedido
@@ -42,7 +52,7 @@ function groupEntriesIntoOrders(flatEntries) {
         clientName: entry.clientName || 'Cliente',
         orderType: entry.orderType || 'sublimacao_total',
         totalPieces: Number(entry.piecesCount) || 0,
-        date: entry.date || new Date().toISOString().split('T')[0],
+        date: entry.date || getLocalDateStr(),
         workType: entry.workType || 'arte_nova',
         notes: entry.notes || '',
         createdAt: entry.createdAt || new Date().toISOString(),
@@ -52,11 +62,16 @@ function groupEntriesIntoOrders(flatEntries) {
 
     const order = orderMap.get(key);
 
-    // Ajusta totalPieces se a etapa de impressão trouxer a contagem real de peças
+    // Ajusta totalPieces se a etapa de impressão ou registro pendente trouxer a contagem real de peças
     if (entry.stage === 'impressao' && Number(entry.piecesCount) > 0) {
       order.totalPieces = Number(entry.piecesCount);
     } else if (Number(entry.piecesCount) > Number(order.totalPieces)) {
       order.totalPieces = Number(entry.piecesCount);
+    }
+
+    // Se for apenas um registro de cabeçalho ("pendente" / "aguardando"), não adiciona como etapa concluída
+    if (entry.stage === 'pendente' || entry.stage === 'aguardando') {
+      return;
     }
 
     // Vincula o lançamento interno
@@ -86,7 +101,7 @@ export function ProductionProvider({ children }) {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.DESIGNERS);
       return saved ? JSON.parse(saved) : INITIAL_DESIGNERS;
-    } catch (e) {
+    } catch {
       return INITIAL_DESIGNERS;
     }
   });
@@ -104,15 +119,100 @@ export function ProductionProvider({ children }) {
       if (savedEntries) {
         const parsedEntries = JSON.parse(savedEntries);
         if (Array.isArray(parsedEntries) && parsedEntries.length > 0) {
-          const migrated = groupEntriesIntoOrders(parsedEntries);
-          return migrated;
+          return groupEntriesIntoOrders(parsedEntries);
         }
       }
       return INITIAL_ORDERS;
-    } catch (e) {
+    } catch {
       return INITIAL_ORDERS;
     }
   });
+
+  // 3. Configuração de Dias Úteis Reais & Feriados
+  const [workingDaysConfig, setWorkingDaysConfig] = useState(() => {
+    const defaultHolidays = getBrazilianHolidays(new Date().getFullYear()).map((h) => h.date);
+    const defaultConfig = {
+      mode: 'calendar', // 'calendar' (Dias Úteis Reais Seg-Sex - Feriados) | 'registered' (Dias com Lançamento) | 'manual' (Fixo)
+      includeSaturday: false,
+      holidays: defaultHolidays,
+      manualDays: 22,
+      designerAbsences: {} // { [designerId]: number } -> faltas abonadas / folgas no período
+    };
+    try {
+      const saved = localStorage.getItem(STORAGE_KEYS.WORKING_DAYS);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        return {
+          ...defaultConfig,
+          ...parsed,
+          holidays: Array.isArray(parsed.holidays) ? parsed.holidays : defaultHolidays,
+          designerAbsences: parsed.designerAbsences || {}
+        };
+      }
+      return defaultConfig;
+    } catch {
+      return defaultConfig;
+    }
+  });
+
+  const updateWorkingDaysConfig = (partial) => {
+    setWorkingDaysConfig((prev) => {
+      const next = { ...prev, ...partial };
+      try {
+        localStorage.setItem(STORAGE_KEYS.WORKING_DAYS, JSON.stringify(next));
+      } catch {
+        // Ignora erro de quota
+      }
+      return next;
+    });
+  };
+
+  const addHolidayDate = (dateStr) => {
+    if (!dateStr) return;
+    setWorkingDaysConfig((prev) => {
+      if (prev.holidays.includes(dateStr)) return prev;
+      const nextHolidays = [...prev.holidays, dateStr].sort();
+      const next = { ...prev, holidays: nextHolidays };
+      try {
+        localStorage.setItem(STORAGE_KEYS.WORKING_DAYS, JSON.stringify(next));
+      } catch {
+        // Ignora
+      }
+      return next;
+    });
+  };
+
+  const removeHolidayDate = (dateStr) => {
+    setWorkingDaysConfig((prev) => {
+      const nextHolidays = prev.holidays.filter((d) => d !== dateStr);
+      const next = { ...prev, holidays: nextHolidays };
+      try {
+        localStorage.setItem(STORAGE_KEYS.WORKING_DAYS, JSON.stringify(next));
+      } catch {
+        // Ignora
+      }
+      return next;
+    });
+  };
+
+  const resetNationalHolidays = (year = new Date().getFullYear()) => {
+    const nat = getBrazilianHolidays(year).map((h) => h.date);
+    updateWorkingDaysConfig({ holidays: nat });
+  };
+
+  const setDesignerAbsenceDays = (designerId, days) => {
+    const cleanDays = Math.max(0, Number(days) || 0);
+    setWorkingDaysConfig((prev) => {
+      const nextAbsences = { ...(prev.designerAbsences || {}), [designerId]: cleanDays };
+      const next = { ...prev, designerAbsences: nextAbsences };
+      try {
+        localStorage.setItem(STORAGE_KEYS.WORKING_DAYS, JSON.stringify(next));
+      } catch {
+        // Ignora
+      }
+      return next;
+    });
+  };
 
   // Carregar dados remotos do Supabase se configurado
   useEffect(() => {
@@ -171,21 +271,29 @@ export function ProductionProvider({ children }) {
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.DESIGNERS, JSON.stringify(designers));
-    } catch (e) {}
+    } catch {
+      // Ignora erro de quota
+    }
   }, [designers]);
 
   useEffect(() => {
     try {
       localStorage.setItem(STORAGE_KEYS.ORDERS, JSON.stringify(orders));
       localStorage.setItem(STORAGE_KEYS.ENTRIES, JSON.stringify(entries));
-    } catch (e) {}
+    } catch {
+      // Ignora erro de quota
+    }
   }, [orders, entries]);
 
   // Filtro de período selecionado
   const [periodFilter, setPeriodFilter] = useState('this_week');
-  const [customRange, setCustomRange] = useState({
-    start: new Date(Date.now() - 7 * 86400000).toISOString().split('T')[0],
-    end: new Date().toISOString().split('T')[0]
+  const [customRange, setCustomRange] = useState(() => {
+    const now = new Date();
+    const weekAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+    return {
+      start: getLocalDateStr(weekAgo),
+      end: getLocalDateStr(now)
+    };
   });
 
   // Filtros secundários
@@ -231,7 +339,7 @@ export function ProductionProvider({ children }) {
     try {
       const saved = localStorage.getItem('designflow_sector_goals');
       return saved ? JSON.parse(saved) : null;
-    } catch (e) {
+    } catch {
       return null;
     }
   });
@@ -240,14 +348,18 @@ export function ProductionProvider({ children }) {
     setSectorGoals(newGoals);
     try {
       localStorage.setItem('designflow_sector_goals', JSON.stringify(newGoals));
-    } catch (e) {}
+    } catch {
+      // Ignora
+    }
   };
 
   const resetSectorGoals = () => {
     setSectorGoals(null);
     try {
       localStorage.removeItem('designflow_sector_goals');
-    } catch (e) {}
+    } catch {
+      // Ignora
+    }
   };
 
   // ==========================================
@@ -256,13 +368,13 @@ export function ProductionProvider({ children }) {
 
   // Criar Novo Pedido com lançamentos opcionais/iniciais
   const addOrder = async (orderData, stageEntries = []) => {
-    const orderId = `ord_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+    const orderId = `ord_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
 
     const formattedEntries = stageEntries.map((stg, idx) => {
       const des = designers.find((d) => d.id === stg.designerId);
       return {
         ...stg,
-        id: `ent_${Date.now()}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
+        id: `ent_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
         designerName: des ? des.name : (stg.designerName || 'Designer'),
         workType: stg.workType || orderData.workType || 'arte_nova',
         piecesCount: Number(stg.piecesCount) || 0,
@@ -277,24 +389,45 @@ export function ProductionProvider({ children }) {
       orderNumber: (orderData.orderNumber || '').trim() || `PED-${Math.floor(1000 + Math.random() * 9000)}`,
       totalPieces: Number(orderData.totalPieces) || 0,
       workType: orderData.workType || 'arte_nova',
+      date: orderData.date || getLocalDateStr(),
       createdAt: new Date().toISOString(),
       entries: formattedEntries
     };
 
     setOrders((prev) => [newOrder, ...prev]);
 
-    // Sincronizar lançamentos com o Supabase
-    if (isSupabaseActive && supabase && formattedEntries.length > 0) {
+    // Sincronizar com o Supabase
+    if (isSupabaseActive && supabase) {
       try {
-        const dbEntries = formattedEntries.map((ent) =>
-          mapEntryToDB({
-            ...ent,
-            orderNumber: newOrder.orderNumber,
-            clientName: newOrder.clientName,
-            orderType: newOrder.orderType
-          })
-        );
-        await supabase.from('production_entries').insert(dbEntries);
+        if (formattedEntries.length > 0) {
+          const dbEntries = formattedEntries.map((ent) =>
+            mapEntryToDB({
+              ...ent,
+              orderNumber: newOrder.orderNumber,
+              clientName: newOrder.clientName,
+              orderType: newOrder.orderType
+            })
+          );
+          await supabase.from('production_entries').insert(dbEntries);
+        } else {
+          // Persiste cabeçalho do pedido mesmo quando criado em "Aguardando Início" (sem etapas)
+          await supabase.from('production_entries').insert(
+            mapEntryToDB({
+              id: `pend_${newOrder.id}`,
+              orderNumber: newOrder.orderNumber,
+              clientName: newOrder.clientName,
+              designerId: null,
+              designerName: null,
+              stage: 'pendente',
+              date: newOrder.date,
+              piecesCount: newOrder.totalPieces,
+              meters: 0,
+              orderType: newOrder.orderType,
+              workType: newOrder.workType,
+              notes: newOrder.notes
+            })
+          );
+        }
       } catch (err) {
         console.error('Erro ao salvar no Supabase:', err);
       }
@@ -305,6 +438,8 @@ export function ProductionProvider({ children }) {
 
   // Atualizar Cabeçalho do Pedido
   const updateOrder = async (orderId, updatedFields) => {
+    const existingOrder = orders.find((o) => o.id === orderId);
+    const previousOrderNumber = updatedFields.previousOrderNumber || existingOrder?.orderNumber;
     let updatedOrder = null;
 
     setOrders((prev) =>
@@ -321,17 +456,19 @@ export function ProductionProvider({ children }) {
       })
     );
 
-    // Se mudou nome do cliente ou número do pedido, atualiza lançamentos no Supabase
-    if (isSupabaseActive && supabase && updatedOrder) {
+    // Sincroniza alterações do cabeçalho no Supabase
+    if (isSupabaseActive && supabase && (updatedOrder || existingOrder)) {
+      const targetOrd = updatedOrder || { ...existingOrder, ...updatedFields };
       try {
         await supabase
           .from('production_entries')
           .update({
-            order_number: updatedOrder.orderNumber,
-            client_name: updatedOrder.clientName,
-            order_type: updatedOrder.orderType
+            order_number: targetOrd.orderNumber,
+            client_name: targetOrd.clientName,
+            order_type: targetOrd.orderType,
+            work_type: targetOrd.workType || 'arte_nova'
           })
-          .eq('order_number', updatedFields.previousOrderNumber || updatedOrder.orderNumber);
+          .eq('order_number', previousOrderNumber || targetOrd.orderNumber);
       } catch (err) {
         console.error('Erro ao atualizar pedido no Supabase:', err);
       }
@@ -360,7 +497,7 @@ export function ProductionProvider({ children }) {
     const designer = designers.find((d) => d.id === newEntryData.designerId);
     const newEntry = {
       ...newEntryData,
-      id: `ent_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      id: `ent_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       designerName: designer ? designer.name : (newEntryData.designerName || 'Designer'),
       workType: newEntryData.workType || 'arte_nova',
       piecesCount: Number(newEntryData.piecesCount) || 0,
@@ -368,14 +505,18 @@ export function ProductionProvider({ children }) {
       createdAt: new Date().toISOString()
     };
 
-    let targetOrder = null;
+    const targetOrder = orders.find((o) => o.id === orderId);
 
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id === orderId) {
-          targetOrder = ord;
+          const updatedTotalPieces =
+            newEntry.stage === 'impressao' && newEntry.piecesCount > 0
+              ? newEntry.piecesCount
+              : ord.totalPieces;
           return {
             ...ord,
+            totalPieces: updatedTotalPieces,
             entries: [...(ord.entries || []), newEntry]
           };
         }
@@ -393,6 +534,12 @@ export function ProductionProvider({ children }) {
             orderType: targetOrder.orderType
           })
         );
+        // Remove eventual registro placeholder "pendente" deste pedido
+        await supabase
+          .from('production_entries')
+          .delete()
+          .eq('order_number', targetOrder.orderNumber)
+          .eq('stage', 'pendente');
       } catch (err) {
         console.error('Erro ao salvar lançamento no Supabase:', err);
       }
@@ -405,12 +552,11 @@ export function ProductionProvider({ children }) {
   const updateEntryInOrder = async (orderId, entryId, updatedEntryFields) => {
     const designer = designers.find((d) => d.id === updatedEntryFields.designerId);
     let updatedEntry = null;
-    let targetOrder = null;
+    const targetOrder = orders.find((o) => o.id === orderId);
 
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id === orderId) {
-          targetOrder = ord;
           const updatedEntries = (ord.entries || []).map((ent) => {
             if (ent.id === entryId) {
               updatedEntry = {
@@ -432,14 +578,17 @@ export function ProductionProvider({ children }) {
 
     if (isSupabaseActive && supabase && updatedEntry && targetOrder) {
       try {
-        await supabase.from('production_entries').update(
-          mapEntryToDB({
-            ...updatedEntry,
-            orderNumber: targetOrder.orderNumber,
-            clientName: targetOrder.clientName,
-            orderType: targetOrder.orderType
-          })
-        ).eq('id', entryId);
+        await supabase
+          .from('production_entries')
+          .update(
+            mapEntryToDB({
+              ...updatedEntry,
+              orderNumber: targetOrder.orderNumber,
+              clientName: targetOrder.clientName,
+              orderType: targetOrder.orderType
+            })
+          )
+          .eq('id', entryId);
       } catch (err) {
         console.error('Erro ao atualizar lançamento no Supabase:', err);
       }
@@ -448,12 +597,15 @@ export function ProductionProvider({ children }) {
 
   // Remover Lançamento de Etapa de um Pedido
   const deleteEntryFromOrder = async (orderId, entryId) => {
+    const targetOrder = orders.find((o) => o.id === orderId);
+    const remainingEntries = (targetOrder?.entries || []).filter((ent) => ent.id !== entryId);
+
     setOrders((prev) =>
       prev.map((ord) => {
         if (ord.id === orderId) {
           return {
             ...ord,
-            entries: (ord.entries || []).filter((ent) => ent.id !== entryId)
+            entries: remainingEntries
           };
         }
         return ord;
@@ -463,6 +615,25 @@ export function ProductionProvider({ children }) {
     if (isSupabaseActive && supabase) {
       try {
         await supabase.from('production_entries').delete().eq('id', entryId);
+        // Se o pedido ficou sem lançamentos, mantém registro pendente para não perder o pedido ao recarregar
+        if (targetOrder && remainingEntries.length === 0) {
+          await supabase.from('production_entries').insert(
+            mapEntryToDB({
+              id: `pend_${targetOrder.id}`,
+              orderNumber: targetOrder.orderNumber,
+              clientName: targetOrder.clientName,
+              designerId: null,
+              designerName: null,
+              stage: 'pendente',
+              date: targetOrder.date,
+              piecesCount: targetOrder.totalPieces,
+              meters: 0,
+              orderType: targetOrder.orderType,
+              workType: targetOrder.workType,
+              notes: targetOrder.notes
+            })
+          );
+        }
       } catch (err) {
         console.error('Erro ao excluir lançamento no Supabase:', err);
       }
@@ -471,7 +642,6 @@ export function ProductionProvider({ children }) {
 
   // Atalhos de Compatibilidade para chamadas antigas
   const addEntry = async (newEntry) => {
-    // Cria um pedido com esse lançamento
     return addOrder(
       {
         orderNumber: newEntry.orderNumber,
@@ -487,7 +657,6 @@ export function ProductionProvider({ children }) {
   };
 
   const updateEntry = async (entryId, fields) => {
-    // Procura o pedido que contém esse entryId
     const targetOrder = orders.find((o) => (o.entries || []).some((e) => e.id === entryId));
     if (targetOrder) {
       return updateEntryInOrder(targetOrder.id, entryId, fields);
@@ -497,7 +666,6 @@ export function ProductionProvider({ children }) {
   const deleteEntry = async (entryId) => {
     const targetOrder = orders.find((o) => (o.entries || []).some((e) => e.id === entryId));
     if (targetOrder) {
-      // Se era o único lançamento do pedido, exclui o pedido também
       if (targetOrder.entries.length <= 1) {
         return deleteOrder(targetOrder.id);
       }
@@ -506,10 +674,19 @@ export function ProductionProvider({ children }) {
   };
 
   const addBatchEntries = async (batchItems) => {
-    // Agrupa por número de pedido e adiciona
+    // Agrupa por número de pedido; se o pedido já existir, adiciona etapa nele
     const grouped = groupEntriesIntoOrders(batchItems);
     for (const ord of grouped) {
-      await addOrder(ord, ord.entries);
+      const existing = orders.find(
+        (o) => (o.orderNumber || '').trim().toLowerCase() === (ord.orderNumber || '').trim().toLowerCase()
+      );
+      if (existing) {
+        for (const ent of ord.entries) {
+          await addEntryToOrder(existing.id, ent);
+        }
+      } else {
+        await addOrder(ord, ord.entries);
+      }
     }
   };
 
@@ -521,10 +698,10 @@ export function ProductionProvider({ children }) {
     const designer = {
       ...newDes,
       id: `des_${Date.now()}`,
-      active: true,
-      goalCriacaoArtes: Number(newDes.goalCriacaoArtes) || 8,
-      goalExportacao: Number(newDes.goalExportacao) || 10,
-      goalImpressaoPecas: Number(newDes.goalImpressaoPecas) || 120,
+      active: newDes.active ?? true,
+      goalCriacaoArtes: Number(newDes.goalCriacaoArtes) || 0,
+      goalExportacao: Number(newDes.goalExportacao) || 0,
+      goalImpressaoPecas: Number(newDes.goalImpressaoPecas) || 0,
       dailyGoalOrders: Number(newDes.dailyGoalOrders) || 8,
       dailyGoalMeters: Number(newDes.dailyGoalMeters) || 0,
       dailyGoalPieces: Number(newDes.dailyGoalPieces) || 50
@@ -603,6 +780,12 @@ export function ProductionProvider({ children }) {
     }
   };
 
+  const resetToSampleData = async () => {
+    const sample = getSampleData();
+    setDesigners(sample.designers);
+    setOrders(sample.orders);
+  };
+
   const syncLocalToSupabase = async () => {
     if (!isSupabaseActive || !supabase) {
       alert('Conecte o Supabase primeiro nas configurações.');
@@ -614,8 +797,32 @@ export function ProductionProvider({ children }) {
         const { error: desErr } = await supabase.from('designers').upsert(designers.map(mapDesignerToDB));
         if (desErr) throw desErr;
       }
-      if (entries.length > 0) {
-        const { error: entErr } = await supabase.from('production_entries').upsert(entries.map(mapEntryToDB));
+
+      // Inclui tanto lançamentos reais quanto pedidos sem lançamentos ("pendente")
+      const allPayloadEntries = [
+        ...entries.map(mapEntryToDB),
+        ...orders
+          .filter((o) => !o.entries || o.entries.length === 0)
+          .map((o) =>
+            mapEntryToDB({
+              id: `pend_${o.id}`,
+              orderNumber: o.orderNumber,
+              clientName: o.clientName,
+              designerId: null,
+              designerName: null,
+              stage: 'pendente',
+              date: o.date,
+              piecesCount: o.totalPieces,
+              meters: 0,
+              orderType: o.orderType,
+              workType: o.workType,
+              notes: o.notes
+            })
+          )
+      ];
+
+      if (allPayloadEntries.length > 0) {
+        const { error: entErr } = await supabase.from('production_entries').upsert(allPayloadEntries);
         if (entErr) throw entErr;
       }
       alert(`✅ Sincronização concluída com sucesso!\n\n${designers.length} designer(s) e ${orders.length} pedido(s) foram sincronizados com o Supabase.`);
@@ -652,38 +859,51 @@ export function ProductionProvider({ children }) {
 
   const dateBounds = useMemo(() => {
     const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
+    const todayStr = getLocalDateStr(now);
 
-    const yesterday = new Date();
-    yesterday.setDate(now.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
+    const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+    const yesterdayStr = getLocalDateStr(yesterday);
 
-    const sevenDaysAgo = new Date();
-    sevenDaysAgo.setDate(now.getDate() - 6);
-    const weekStartStr = sevenDaysAgo.toISOString().split('T')[0];
+    const sevenDaysAgo = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 6);
+    const weekStartStr = getLocalDateStr(sevenDaysAgo);
 
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const monthStartStr = monthStart.toISOString().split('T')[0];
+    const monthStartStr = getLocalDateStr(monthStart);
+
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const monthEndStr = getLocalDateStr(monthEnd);
 
     switch (periodFilter) {
       case 'today':
-        return { start: todayStr, end: todayStr, label: 'Hoje', daysCount: 1 };
+        return { start: todayStr, end: todayStr, fullEnd: todayStr, label: 'Hoje', daysCount: 1 };
       case 'yesterday':
-        return { start: yesterdayStr, end: yesterdayStr, label: 'Ontem', daysCount: 1 };
+        return { start: yesterdayStr, end: yesterdayStr, fullEnd: yesterdayStr, label: 'Ontem', daysCount: 1 };
       case 'this_week':
-        return { start: weekStartStr, end: todayStr, label: 'Últimos 7 Dias', daysCount: 7 };
+        return { start: weekStartStr, end: todayStr, fullEnd: todayStr, label: 'Últimos 7 Dias', daysCount: 7 };
       case 'this_month':
-        return { start: monthStartStr, end: todayStr, label: 'Este Mês', daysCount: Math.max(1, now.getDate()) };
+        return {
+          start: monthStartStr,
+          end: monthEndStr,
+          fullEnd: monthEndStr,
+          label: 'Este Mês',
+          daysCount: Math.max(1, now.getDate())
+        };
       case 'custom': {
-        const startD = new Date(customRange.start);
-        const endD = new Date(customRange.end);
+        const startD = new Date(customRange.start + 'T12:00:00');
+        const endD = new Date(customRange.end + 'T12:00:00');
         const diffTime = Math.abs(endD - startD);
         const days = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
-        return { start: customRange.start, end: customRange.end, label: 'Personalizado', daysCount: Math.max(1, days) };
+        return {
+          start: customRange.start,
+          end: customRange.end,
+          fullEnd: customRange.end,
+          label: 'Personalizado',
+          daysCount: Math.max(1, days)
+        };
       }
       case 'all':
       default:
-        return { start: '1970-01-01', end: '2099-12-31', label: 'Todo o Histórico', daysCount: 30 };
+        return { start: '1970-01-01', end: '2099-12-31', fullEnd: '2099-12-31', label: 'Todo o Histórico', daysCount: 30 };
     }
   }, [periodFilter, customRange]);
 
@@ -769,7 +989,6 @@ export function ProductionProvider({ children }) {
   // ==========================================
 
   const metrics = useMemo(() => {
-    // TOTAL DE PEDIDOS: rigorosamente a quantidade de PEDIDOS ÚNICOS no período!
     const totalOrders = periodOrders.length;
 
     let totalPieces = 0;
@@ -783,24 +1002,20 @@ export function ProductionProvider({ children }) {
     const exportacaoEntriesAll = periodEntries.filter((e) => e.stage === 'exportacao');
     const impressaoEntriesAll = periodEntries.filter((e) => e.stage === 'impressao');
 
-    // Criação: total de artes
     const criacaoTotalArtes = criacaoEntriesAll.reduce(
       (acc, e) => acc + (Number(e.piecesCount) > 0 ? Number(e.piecesCount) : 1),
       0
     );
 
-    // Exportação: total de fechamentos
     const exportacaoTotalCount = exportacaoEntriesAll.reduce(
       (acc, e) => acc + (Number(e.piecesCount) > 0 ? Number(e.piecesCount) : 1),
       0
     );
 
-    // Impressão: estritamente SOMENTE PEÇAS IMPRESSAS
     impressaoEntriesAll.forEach((e) => {
       impressaoTotalPieces += Number(e.piecesCount) || 0;
     });
 
-    // Peças gerais somadas a partir dos pedidos do período
     totalPieces = periodOrders.reduce((acc, ord) => acc + (Number(ord.totalPieces) || 0), 0);
 
     periodEntries.forEach((item) => {
@@ -808,15 +1023,79 @@ export function ProductionProvider({ children }) {
       if (item.date) uniqueDates.add(item.date);
     });
 
-    // Se nenhum lançamento teve data específica, usa as datas dos pedidos
     if (uniqueDates.size === 0) {
       periodOrders.forEach((ord) => {
         if (ord.date) uniqueDates.add(ord.date);
       });
     }
 
-    const workingDaysCount = Math.max(1, uniqueDates.size);
-    const activeDesigners = designers.filter((d) => d.active);
+    const registeredDaysCount = Math.max(1, uniqueDates.size);
+
+    // ====================================================
+    // CÁLCULO DE DIAS ÚTEIS REAIS DO PERÍODO E DO MÊS
+    // ====================================================
+    const now = new Date();
+    const todayStr = getLocalDateStr(now);
+    const monthStartStr = getLocalDateStr(new Date(now.getFullYear(), now.getMonth(), 1));
+    const monthEndStr = getLocalDateStr(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+
+    // Dias úteis totais do mês corrente (do dia 1 ao último dia do mês, descontando feriados)
+    const fullMonthCalc = calculateBusinessDays(monthStartStr, monthEndStr, {
+      includeSaturday: workingDaysConfig.includeSaturday,
+      holidays: workingDaysConfig.holidays
+    });
+    const totalMonthWorkingDays = Math.max(1, fullMonthCalc.count);
+
+    // Dias úteis decorridos no período selecionado (para cálculo justo da média diária até hoje)
+    let calendarElapsedDays = registeredDaysCount;
+    let calendarTotalPeriodDays = registeredDaysCount;
+    let discountedHolidaysInPeriod = [];
+
+    if (periodFilter === 'all') {
+      const sortedUnique = Array.from(uniqueDates).sort();
+      if (sortedUnique.length > 0) {
+        const calcAll = calculateBusinessDays(sortedUnique[0], sortedUnique[sortedUnique.length - 1], {
+          includeSaturday: workingDaysConfig.includeSaturday,
+          holidays: workingDaysConfig.holidays
+        });
+        calendarElapsedDays = Math.max(1, calcAll.count);
+        calendarTotalPeriodDays = calendarElapsedDays;
+        discountedHolidaysInPeriod = calcAll.discountedHolidays;
+      }
+    } else {
+      // Data limite para média diária é no máximo hoje (não divide por dias futuros que ainda não aconteceram!)
+      const effectiveEndForAvg = dateBounds.end > todayStr ? todayStr : dateBounds.end;
+      const calcElapsed = calculateBusinessDays(dateBounds.start, effectiveEndForAvg, {
+        includeSaturday: workingDaysConfig.includeSaturday,
+        holidays: workingDaysConfig.holidays
+      });
+      const calcFullPeriod = calculateBusinessDays(dateBounds.start, dateBounds.fullEnd || dateBounds.end, {
+        includeSaturday: workingDaysConfig.includeSaturday,
+        holidays: workingDaysConfig.holidays
+      });
+
+      calendarElapsedDays = Math.max(1, calcElapsed.count);
+      calendarTotalPeriodDays = Math.max(1, calcFullPeriod.count);
+      discountedHolidaysInPeriod = calcFullPeriod.discountedHolidays;
+    }
+
+    // Define a base oficial de dias úteis conforme o modo escolhido pelo usuário
+    let workingDaysCount = registeredDaysCount;
+    let targetPeriodDaysCount = calendarTotalPeriodDays;
+
+    if (workingDaysConfig.mode === 'calendar') {
+      workingDaysCount = calendarElapsedDays;
+      targetPeriodDaysCount = calendarTotalPeriodDays;
+    } else if (workingDaysConfig.mode === 'manual') {
+      workingDaysCount = Math.max(1, Number(workingDaysConfig.manualDays) || 22);
+      targetPeriodDaysCount = workingDaysCount;
+    } else {
+      // 'registered'
+      workingDaysCount = registeredDaysCount;
+      targetPeriodDaysCount = periodFilter === 'this_month' ? totalMonthWorkingDays : registeredDaysCount;
+    }
+
+    const activeDesigners = designers.filter((d) => d.active !== false);
     const activeDesignersCount = Math.max(1, activeDesigners.length);
 
     // Médias Diárias Globais do Setor
@@ -828,7 +1107,7 @@ export function ProductionProvider({ children }) {
     const teamDailyAvgExportacao = activeDesigners.length > 0 ? exportacaoTotalCount / workingDaysCount : 0;
     const teamDailyAvgImpressaoPieces = activeDesigners.length > 0 ? Math.round(impressaoTotalPieces / workingDaysCount) : 0;
 
-    // Metas Globais do Setor
+    // Metas Diárias Globais do Setor (soma apenas designers ativos)
     const calculatedTeamGoalCriacao = activeDesigners.reduce((acc, d) => acc + (Number(d.goalCriacaoArtes) || 0), 0);
     const calculatedTeamGoalExportacao = activeDesigners.reduce((acc, d) => acc + (Number(d.goalExportacao) || 0), 0);
     const calculatedTeamGoalImpressaoPieces = activeDesigners.reduce((acc, d) => acc + (Number(d.goalImpressaoPecas) || 0), 0);
@@ -848,20 +1127,36 @@ export function ProductionProvider({ children }) {
         ? Number(sectorGoals.impressao)
         : (calculatedTeamGoalImpressaoPieces || 120);
 
-    // Estatísticas Individuais por Designer (somando todos os lançamentos em que atuou)
+    // Metas Acumuladas (Até Hoje no Período) & Meta Mensal Total (Dias Úteis Reais do Mês)
+    const effectiveMonthDays = workingDaysConfig.mode === 'manual' ? workingDaysCount : totalMonthWorkingDays;
+    const monthGoalCriacao = teamDailyGoalCriacao * effectiveMonthDays;
+    const monthGoalExportacao = teamDailyGoalExportacao * effectiveMonthDays;
+    const monthGoalImpressaoPieces = teamDailyGoalImpressaoPieces * effectiveMonthDays;
+
+    const elapsedGoalCriacao = teamDailyGoalCriacao * workingDaysCount;
+    const elapsedGoalExportacao = teamDailyGoalExportacao * workingDaysCount;
+    const elapsedGoalImpressaoPieces = teamDailyGoalImpressaoPieces * workingDaysCount;
+
+    // Estatísticas Individuais por Designer
     const designerStats = designers.map((des) => {
       const desEntries = periodEntries.filter((e) => e.designerId === des.id);
       const desDates = new Set(desEntries.map((e) => e.date).filter(Boolean));
-      const desWorkingDays = Math.max(1, desDates.size);
+      const absenceDays = Math.max(0, Number(workingDaysConfig.designerAbsences?.[des.id] || 0));
 
-      // Quantos pedidos distintos ele tocou no período
+      // Se modo = 'calendar' ou 'manual', usa os dias úteis reais menos as folgas/atestados abonados do designer
+      let desWorkingDays = Math.max(1, desDates.size);
+      if (workingDaysConfig.mode === 'calendar' || workingDaysConfig.mode === 'manual') {
+        desWorkingDays = Math.max(1, workingDaysCount - absenceDays);
+      } else {
+        desWorkingDays = Math.max(1, desDates.size);
+      }
+
       const distinctOrdersCount = new Set(desEntries.map((e) => e.orderNumber || e.orderId)).size;
       const ordersCount = distinctOrdersCount > 0 ? distinctOrdersCount : desEntries.length;
 
       const piecesCount = desEntries.reduce((acc, e) => acc + (Number(e.piecesCount) || 0), 0);
       const metersCount = desEntries.reduce((acc, e) => acc + (Number(e.meters) || 0), 0);
 
-      // Quantidades por Categoria
       const desCriacaoEntries = desEntries.filter((e) => e.stage === 'criacao');
       const desExportacaoEntries = desEntries.filter((e) => e.stage === 'exportacao');
       const desImpressaoEntries = desEntries.filter((e) => e.stage === 'impressao');
@@ -871,7 +1166,7 @@ export function ProductionProvider({ children }) {
       const impressaoPieces = desImpressaoEntries.reduce((acc, e) => acc + (Number(e.piecesCount) || 0), 0);
       const impressaoCount = desImpressaoEntries.length;
 
-      // Médias Diárias
+      // Médias Diárias Individuais
       const dailyAvgCriacao = Number((criacaoCount / desWorkingDays).toFixed(1));
       const dailyAvgExportacao = Number((exportacaoCount / desWorkingDays).toFixed(1));
       const dailyAvgImpressaoPieces = Math.round(impressaoPieces / desWorkingDays);
@@ -895,7 +1190,10 @@ export function ProductionProvider({ children }) {
       let goalAchievementRate = 100;
       let performanceStatus = 'Na Meta';
 
-      if (activeRates.length === 0) {
+      if (des.active === false) {
+        goalAchievementRate = 0;
+        performanceStatus = 'Pausado / Férias';
+      } else if (activeRates.length === 0) {
         goalAchievementRate = 100;
         performanceStatus = 'Sem Meta';
       } else {
@@ -923,7 +1221,9 @@ export function ProductionProvider({ children }) {
         exportacaoCount,
         impressaoCount,
         impressaoPieces,
-        workingDays: desDates.size,
+        workingDays: desWorkingDays,
+        registeredDays: desDates.size,
+        absenceDays,
         dailyAvgOrders,
         dailyAvgCriacao,
         dailyAvgExportacao,
@@ -941,6 +1241,9 @@ export function ProductionProvider({ children }) {
     });
 
     const rankedDesigners = [...designerStats].sort((a, b) => {
+      if ((a.active !== false) !== (b.active !== false)) {
+        return a.active !== false ? -1 : 1;
+      }
       if (b.goalAchievementRate !== a.goalAchievementRate) {
         return (b.goalAchievementRate || 0) - (a.goalAchievementRate || 0);
       }
@@ -993,15 +1296,16 @@ export function ProductionProvider({ children }) {
 
     // Linha do Tempo Diária
     const timelineMap = new Map();
+    const effectiveTimelineEnd = dateBounds.end > todayStr && periodFilter === 'this_month' ? todayStr : dateBounds.end;
     const startDate = new Date(dateBounds.start + 'T12:00:00');
-    const endDate = new Date(dateBounds.end + 'T12:00:00');
+    const endDate = new Date(effectiveTimelineEnd + 'T12:00:00');
     const diffTime = endDate - startDate;
     const diffDays = Math.round(diffTime / (1000 * 60 * 60 * 24));
 
     if (diffDays >= 0 && diffDays <= 45 && dateBounds.start !== '1970-01-01') {
       const cur = new Date(startDate);
       while (cur <= endDate) {
-        const dStr = cur.toISOString().split('T')[0];
+        const dStr = getLocalDateStr(cur);
         timelineMap.set(dStr, { criacao: 0, exportacao: 0, impressao: 0 });
         cur.setDate(cur.getDate() + 1);
       }
@@ -1041,10 +1345,28 @@ export function ProductionProvider({ children }) {
       dates: displayDates
     };
 
-    // Contagem de Tipos de Lançamento
-    const countArteNova = periodEntries.filter((e) => (e.workType || 'arte_nova') === 'arte_nova').length;
-    const countAjuste = periodEntries.filter((e) => e.workType === 'ajuste_refacao').length;
-    const countReposicao = periodEntries.filter((e) => e.workType === 'reposicao').length;
+    // Contagem de Tipos de Lançamento (Baseada em Pedidos Únicos para que a barra e taxa nunca ultrapassem 100%)
+    let countArteNova = 0;
+    let countAjuste = 0;
+    let countReposicao = 0;
+
+    periodOrders.forEach((ord) => {
+      const hasReposicao =
+        ord.workType === 'reposicao' ||
+        (ord.entries || []).some((e) => e.workType === 'reposicao');
+      const hasAjuste =
+        ord.workType === 'ajuste_refacao' ||
+        (ord.entries || []).some((e) => e.workType === 'ajuste_refacao');
+
+      if (hasReposicao) {
+        countReposicao++;
+      } else if (hasAjuste) {
+        countAjuste++;
+      } else {
+        countArteNova++;
+      }
+    });
+
     const reworkCount = countAjuste + countReposicao;
     const reworkRate = totalOrders > 0 ? Math.round((reworkCount / totalOrders) * 100) : 0;
 
@@ -1061,7 +1383,13 @@ export function ProductionProvider({ children }) {
       totalPieces,
       impressaoTotalPieces,
       totalMeters: Number(totalMeters.toFixed(1)),
-      workingDaysCount: uniqueDates.size || 0,
+      workingDaysCount,
+      registeredDaysCount: uniqueDates.size || 0,
+      calendarElapsedDays,
+      calendarTotalPeriodDays,
+      totalMonthWorkingDays: effectiveMonthDays,
+      targetPeriodDaysCount,
+      discountedHolidaysInPeriod,
       activeDesignersCount: activeDesigners.length,
       teamDailyAvgOrders: Number(teamDailyAvgOrders.toFixed(1)),
       avgOrdersPerDesigner: Number(avgOrdersPerDesigner.toFixed(1)),
@@ -1071,6 +1399,12 @@ export function ProductionProvider({ children }) {
       teamDailyGoalCriacao,
       teamDailyGoalExportacao,
       teamDailyGoalImpressaoPieces,
+      monthGoalCriacao,
+      monthGoalExportacao,
+      monthGoalImpressaoPieces,
+      elapsedGoalCriacao,
+      elapsedGoalExportacao,
+      elapsedGoalImpressaoPieces,
       stageCounts: {
         criacao: criacaoTotalArtes,
         exportacao: exportacaoTotalCount,
@@ -1082,7 +1416,7 @@ export function ProductionProvider({ children }) {
       dailyTimeline,
       reworkStats
     };
-  }, [periodOrders, periodEntries, orders, designers, dateBounds, sectorGoals]);
+  }, [periodOrders, periodEntries, orders, designers, dateBounds, sectorGoals, workingDaysConfig, periodFilter]);
 
   // Exportar dados em CSV
   const exportToCSV = () => {
@@ -1134,7 +1468,7 @@ export function ProductionProvider({ children }) {
     const encodedUri = encodeURI(csvContent);
     const link = document.createElement('a');
     link.setAttribute('href', encodedUri);
-    link.setAttribute('download', `pedidos_producao_${periodFilter}_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute('download', `pedidos_producao_${periodFilter}_${getLocalDateStr()}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -1143,17 +1477,19 @@ export function ProductionProvider({ children }) {
   // Backup JSON
   const exportToJSON = () => {
     const data = {
-      version: '3.0',
+      version: '3.1',
       exportedAt: new Date().toISOString(),
       designers,
       orders,
-      entries
+      entries,
+      workingDaysConfig,
+      sectorGoals
     };
     const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = `backup_designflow_${new Date().toISOString().split('T')[0]}.json`;
+    link.download = `backup_designflow_${getLocalDateStr()}.json`;
     link.click();
     URL.revokeObjectURL(url);
   };
@@ -1166,11 +1502,16 @@ export function ProductionProvider({ children }) {
         if (Array.isArray(json.designers)) {
           setDesigners(json.designers);
         }
+        if (json.workingDaysConfig) {
+          updateWorkingDaysConfig(json.workingDaysConfig);
+        }
+        if (json.sectorGoals) {
+          updateSectorGoals(json.sectorGoals);
+        }
         if (Array.isArray(json.orders)) {
           setOrders(json.orders);
           alert('Backup com pedidos e lançamentos restaurado com sucesso!');
         } else if (Array.isArray(json.entries)) {
-          // Migra entradas para pedidos
           setOrders(groupEntriesIntoOrders(json.entries));
           alert('Backup restaurado com sucesso (lançamentos agrupados em pedidos)!');
         } else {
@@ -1225,6 +1566,7 @@ export function ProductionProvider({ children }) {
         updateDesigner,
         deleteDesigner,
         clearAllData,
+        resetToSampleData,
         exportToCSV,
         exportToJSON,
         importFromJSON,
@@ -1257,6 +1599,14 @@ export function ProductionProvider({ children }) {
         sectorGoals,
         updateSectorGoals,
         resetSectorGoals,
+        // Dias Úteis Reais e Feriados
+        workingDaysConfig,
+        updateWorkingDaysConfig,
+        addHolidayDate,
+        removeHolidayDate,
+        resetNationalHolidays,
+        setDesignerAbsenceDays,
+        // Supabase
         isSupabaseActive,
         isLoadingDB,
         syncLocalToSupabase,

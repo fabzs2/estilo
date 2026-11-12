@@ -1,40 +1,46 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useProduction } from '../context/ProductionContext';
-import { ORDER_TYPES, WORK_TYPES } from '../constants/initialData';
-import { 
-  X, 
-  Save, 
-  Layers, 
-  Printer, 
-  PenTool, 
-  Check, 
+import { ORDER_TYPES, WORK_TYPES, getLocalDateStr } from '../constants/initialData';
+import {
+  X,
+  Save,
+  Layers,
+  Printer,
+  PenTool,
   Users,
   Calendar,
   Tag,
   Hash,
   FileText,
   Package,
-  Sparkles
+  AlertCircle,
+  Plus,
+  RefreshCw
 } from 'lucide-react';
 
 export function QuickEntryModal() {
-  const { 
-    isQuickEntryOpen, 
-    setIsQuickEntryOpen, 
-    designers, 
-    addOrder, 
-    updateOrder, 
-    editingOrder, 
-    setEditingOrder 
+  const {
+    isQuickEntryOpen,
+    setIsQuickEntryOpen,
+    designers,
+    orders,
+    addOrder,
+    updateOrder,
+    editingOrder,
+    setEditingOrder,
+    openAddStageToOrder
   } = useProduction();
 
-  const getTodayStr = () => new Date().toISOString().split('T')[0];
+  const activeDesigners = useMemo(() => {
+    const active = designers.filter((d) => d.active !== false);
+    return active.length > 0 ? active : designers;
+  }, [designers]);
 
   // Dados Gerais do Pedido
   const [generalData, setGeneralData] = useState({
     orderNumber: '',
     clientName: '',
-    date: getTodayStr(),
+    date: getLocalDateStr(),
     orderType: 'sublimacao_total',
     workType: 'arte_nova',
     totalPieces: '',
@@ -46,7 +52,7 @@ export function QuickEntryModal() {
     enabled: true,
     designerId: '',
     artesCount: '1',
-    date: getTodayStr(),
+    date: getLocalDateStr(),
     workType: 'arte_nova',
     notes: ''
   });
@@ -56,7 +62,7 @@ export function QuickEntryModal() {
     enabled: true,
     designerId: '',
     exportacoesCount: '1',
-    date: getTodayStr(),
+    date: getLocalDateStr(),
     notes: ''
   });
 
@@ -66,37 +72,63 @@ export function QuickEntryModal() {
     designerId: '',
     piecesCount: '',
     meters: '',
-    date: getTodayStr(),
+    date: getLocalDateStr(),
     notes: ''
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
 
+  const generateUniqueOrderNumber = () => {
+    const existingNums = new Set(orders.map((o) => (o.orderNumber || '').toUpperCase()));
+    for (let i = 0; i < 20; i++) {
+      const candidate = `PED-${Math.floor(1000 + Math.random() * 9000)}`;
+      if (!existingNums.has(candidate)) return candidate;
+    }
+    return `PED-${Date.now().toString().slice(-4)}`;
+  };
+
   // Inicializar formulário ao abrir
   useEffect(() => {
     if (!isQuickEntryOpen) return;
 
+    const today = getLocalDateStr();
+
     if (editingOrder) {
-      // Modo edição dos dados cadastrais do pedido
       setGeneralData({
         orderNumber: editingOrder.orderNumber || '',
         clientName: editingOrder.clientName || '',
-        date: editingOrder.date || getTodayStr(),
+        date: editingOrder.date || today,
         orderType: editingOrder.orderType || 'sublimacao_total',
         workType: editingOrder.workType || 'arte_nova',
         totalPieces: String(editingOrder.totalPieces ?? ''),
         notes: editingOrder.notes || ''
       });
     } else {
-      // Novo pedido: encontra os melhores designers padrão por especialidade
-      const criacaoDefault = designers.find((d) => (d.role || '').toLowerCase().includes('cria'))?.id || designers[0]?.id || '';
-      const exportacaoDefault = designers.find((d) => (d.role || '').toLowerCase().includes('export') || (d.role || '').toLowerCase().includes('fechamento'))?.id || designers[1]?.id || designers[0]?.id || '';
-      const impressaoDefault = designers.find((d) => (d.role || '').toLowerCase().includes('impress') || (d.role || '').toLowerCase().includes('rip'))?.id || designers[2]?.id || designers[0]?.id || '';
-
-      const today = getTodayStr();
+      const criacaoDefault =
+        activeDesigners.find((d) => (d.role || '').toLowerCase().includes('cria'))?.id ||
+        activeDesigners[0]?.id ||
+        '';
+      const exportacaoDefault =
+        activeDesigners.find(
+          (d) =>
+            (d.role || '').toLowerCase().includes('export') ||
+            (d.role || '').toLowerCase().includes('fechamento')
+        )?.id ||
+        activeDesigners[1]?.id ||
+        activeDesigners[0]?.id ||
+        '';
+      const impressaoDefault =
+        activeDesigners.find(
+          (d) =>
+            (d.role || '').toLowerCase().includes('impress') ||
+            (d.role || '').toLowerCase().includes('rip')
+        )?.id ||
+        activeDesigners[2]?.id ||
+        activeDesigners[0]?.id ||
+        '';
 
       setGeneralData({
-        orderNumber: `PED-${Math.floor(1000 + Math.random() * 9000)}`,
+        orderNumber: generateUniqueOrderNumber(),
         clientName: '',
         date: today,
         orderType: 'sublimacao_total',
@@ -131,7 +163,18 @@ export function QuickEntryModal() {
         notes: ''
       });
     }
-  }, [editingOrder, isQuickEntryOpen, designers]);
+  }, [editingOrder, isQuickEntryOpen, activeDesigners]);
+
+  // Verifica se o número de pedido digitado já existe na base
+  const duplicateOrder = useMemo(() => {
+    const cleanNum = (generalData.orderNumber || '').trim().toLowerCase();
+    if (!cleanNum) return null;
+    return orders.find(
+      (o) =>
+        (o.orderNumber || '').trim().toLowerCase() === cleanNum &&
+        (!editingOrder || o.id !== editingOrder.id)
+    );
+  }, [generalData.orderNumber, orders, editingOrder]);
 
   if (!isQuickEntryOpen) return null;
 
@@ -140,13 +183,11 @@ export function QuickEntryModal() {
     setEditingOrder(null);
   };
 
-  // Quando o usuário preenche a quantidade geral de peças do pedido, sugere na etapa de Impressão
   const handleGeneralPiecesChange = (val) => {
     setGeneralData((prev) => ({ ...prev, totalPieces: val }));
     setStageImpressao((prev) => ({ ...prev, piecesCount: val }));
   };
 
-  // Atalho para replicar um mesmo designer nas 3 etapas
   const handleApplySameDesigner = (designerId) => {
     if (!designerId) return;
     setStageCriacao((prev) => ({ ...prev, designerId }));
@@ -154,7 +195,6 @@ export function QuickEntryModal() {
     setStageImpressao((prev) => ({ ...prev, designerId }));
   };
 
-  // Atalho para replicar a data da arte nas etapas de exportação e impressão
   const handleCopyDateFromCriacao = () => {
     if (stageCriacao.date) {
       setStageExportacao((prev) => ({ ...prev, date: stageCriacao.date }));
@@ -170,10 +210,18 @@ export function QuickEntryModal() {
       return;
     }
 
+    if (duplicateOrder) {
+      const confirmDup = window.confirm(
+        `Já existe um pedido cadastrado com o número "${duplicateOrder.orderNumber}" (${duplicateOrder.clientName}). Deseja continuar mesmo assim?`
+      );
+      if (!confirmDup) return;
+    }
+
     // 1. Modo Edição do Pedido
     if (editingOrder) {
       setIsSubmitting(true);
       await updateOrder(editingOrder.id, {
+        previousOrderNumber: editingOrder.orderNumber,
         orderNumber: generalData.orderNumber.trim() || editingOrder.orderNumber,
         clientName: generalData.clientName.trim(),
         date: generalData.date,
@@ -190,7 +238,6 @@ export function QuickEntryModal() {
     // 2. Modo Criação de Novo Pedido (com lançamentos opcionais)
     const stageEntries = [];
 
-    // Criação
     if (stageCriacao.enabled) {
       if (!stageCriacao.designerId) {
         alert('Selecione o designer responsável pela Criação da Arte.');
@@ -207,7 +254,6 @@ export function QuickEntryModal() {
       });
     }
 
-    // Exportação
     if (stageExportacao.enabled) {
       if (!stageExportacao.designerId) {
         alert('Selecione o designer responsável pela Exportação/Fechamento.');
@@ -224,7 +270,6 @@ export function QuickEntryModal() {
       });
     }
 
-    // Impressão
     if (stageImpressao.enabled) {
       if (!stageImpressao.designerId) {
         alert('Selecione o operador responsável pela Impressão.');
@@ -249,8 +294,8 @@ export function QuickEntryModal() {
 
   return (
     <div className="modal-overlay" onClick={handleClose}>
-      <div 
-        className="modal-content modal-lg" 
+      <div
+        className="modal-content modal-lg"
         onClick={(e) => e.stopPropagation()}
         style={{ maxWidth: '820px' }}
       >
@@ -262,7 +307,7 @@ export function QuickEntryModal() {
               {editingOrder ? `Editar Pedido ${editingOrder.orderNumber}` : 'Novo Pedido de Produção'}
             </div>
             <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '2px' }}>
-              {editingOrder 
+              {editingOrder
                 ? 'Atualize os dados gerais do pedido (os lançamentos continuam salvos no histórico)'
                 : 'Cadastre o pedido e, se desejar, já preencha as etapas concluídas (Criação, Exportação e Impressão)'}
             </div>
@@ -274,9 +319,8 @@ export function QuickEntryModal() {
 
         <form onSubmit={handleSubmit}>
           <div className="modal-body" style={{ maxHeight: '72vh', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '18px' }}>
-            
             {/* SEÇÃO 1: DADOS GERAIS DO PEDIDO */}
-            <div 
+            <div
               style={{
                 background: 'var(--bg-surface)',
                 border: '1px solid var(--border-subtle)',
@@ -289,6 +333,57 @@ export function QuickEntryModal() {
                   1. Dados do Pedido (Uniforme)
                 </span>
               </div>
+
+              {/* Aviso de Pedido Duplicado */}
+              {duplicateOrder && (
+                <div
+                  style={{
+                    marginBottom: '14px',
+                    padding: '10px 12px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'rgba(245, 158, 11, 0.1)',
+                    border: '1px solid rgba(245, 158, 11, 0.35)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    flexWrap: 'wrap',
+                    gap: '10px',
+                    fontSize: '0.76rem'
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#fbbf24' }}>
+                    <AlertCircle size={15} />
+                    <span>
+                      O pedido <strong>{duplicateOrder.orderNumber}</strong> já existe ({duplicateOrder.clientName}).
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    {!editingOrder && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '3px 8px', fontSize: '0.7rem', borderColor: '#fbbf24', color: '#fbbf24' }}
+                        onClick={() => {
+                          handleClose();
+                          openAddStageToOrder(duplicateOrder, 'exportacao');
+                        }}
+                      >
+                        <Plus size={11} />
+                        Lançar Etapa no Existente
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ padding: '3px 8px', fontSize: '0.7rem' }}
+                      onClick={() => setGeneralData((prev) => ({ ...prev, orderNumber: generateUniqueOrderNumber() }))}
+                    >
+                      <RefreshCw size={11} />
+                      Gerar Outro Nº
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Linha 1: Número, Cliente, Data */}
               <div style={{ display: 'grid', gridTemplateColumns: '150px 1fr 150px', gap: '12px', marginBottom: '12px' }}>
@@ -408,7 +503,7 @@ export function QuickEntryModal() {
 
             {/* SEÇÃO 2: LANÇAMENTOS DE ETAPAS (Apenas no modo Novo Pedido) */}
             {!editingOrder && (
-              <div 
+              <div
                 style={{
                   background: 'var(--bg-surface)',
                   border: '1px solid var(--border-subtle)',
@@ -452,9 +547,8 @@ export function QuickEntryModal() {
                 </div>
 
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  
                   {/* ETAPA 1: CRIAÇÃO */}
-                  <div 
+                  <div
                     style={{
                       border: stageCriacao.enabled ? '1px solid rgba(96, 165, 250, 0.4)' : '1px solid var(--border-subtle)',
                       background: stageCriacao.enabled ? 'rgba(96, 165, 250, 0.04)' : 'var(--bg-secondary)',
@@ -490,7 +584,7 @@ export function QuickEntryModal() {
                             required={stageCriacao.enabled}
                           >
                             <option value="">Selecione...</option>
-                            {designers.map((d) => (
+                            {activeDesigners.map((d) => (
                               <option key={d.id} value={d.id}>{d.name}</option>
                             ))}
                           </select>
@@ -524,7 +618,7 @@ export function QuickEntryModal() {
                   </div>
 
                   {/* ETAPA 2: EXPORTAÇÃO */}
-                  <div 
+                  <div
                     style={{
                       border: stageExportacao.enabled ? '1px solid rgba(167, 139, 250, 0.4)' : '1px solid var(--border-subtle)',
                       background: stageExportacao.enabled ? 'rgba(167, 139, 250, 0.04)' : 'var(--bg-secondary)',
@@ -560,7 +654,7 @@ export function QuickEntryModal() {
                             required={stageExportacao.enabled}
                           >
                             <option value="">Selecione...</option>
-                            {designers.map((d) => (
+                            {activeDesigners.map((d) => (
                               <option key={d.id} value={d.id}>{d.name}</option>
                             ))}
                           </select>
@@ -594,7 +688,7 @@ export function QuickEntryModal() {
                   </div>
 
                   {/* ETAPA 3: IMPRESSÃO */}
-                  <div 
+                  <div
                     style={{
                       border: stageImpressao.enabled ? '1px solid rgba(52, 211, 153, 0.4)' : '1px solid var(--border-subtle)',
                       background: stageImpressao.enabled ? 'rgba(52, 211, 153, 0.04)' : 'var(--bg-secondary)',
@@ -630,7 +724,7 @@ export function QuickEntryModal() {
                             required={stageImpressao.enabled}
                           >
                             <option value="">Selecione...</option>
-                            {designers.map((d) => (
+                            {activeDesigners.map((d) => (
                               <option key={d.id} value={d.id}>{d.name}</option>
                             ))}
                           </select>
@@ -676,11 +770,9 @@ export function QuickEntryModal() {
                       </div>
                     )}
                   </div>
-
                 </div>
               </div>
             )}
-
           </div>
 
           {/* Rodapé com Ações */}
@@ -699,11 +791,11 @@ export function QuickEntryModal() {
               disabled={isSubmitting}
             >
               <Save size={14} />
-              {isSubmitting 
-                ? 'Salvando...' 
-                : editingOrder 
-                  ? 'Salvar Alterações do Pedido' 
-                  : 'Criar Pedido & Salvar Lançamentos'}
+              {isSubmitting
+                ? 'Salvando...'
+                : editingOrder
+                ? 'Salvar Alterações do Pedido'
+                : 'Criar Pedido & Salvar Lançamentos'}
             </button>
           </div>
         </form>

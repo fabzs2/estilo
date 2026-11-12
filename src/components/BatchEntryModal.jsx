@@ -1,28 +1,41 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useProduction } from '../context/ProductionContext';
-import { STAGES, ORDER_TYPES } from '../constants/initialData';
-import { X, Plus, Trash2, Save, Layers, CheckCircle } from 'lucide-react';
+import { WORK_TYPES, getLocalDateStr } from '../constants/initialData';
+import { X, Plus, Trash2, Save, Layers } from 'lucide-react';
 
 export function BatchEntryModal() {
   const { isBatchEntryOpen, setIsBatchEntryOpen, designers, addBatchEntries } = useProduction();
 
-  const createEmptyRow = (index) => ({
+  const activeDesigners = useMemo(() => {
+    const active = designers.filter((d) => d.active !== false);
+    return active.length > 0 ? active : designers;
+  }, [designers]);
+
+  const createEmptyRow = (index, defaultDesignerId = '') => ({
     id: `row_${Date.now()}_${index}`,
-    date: new Date().toISOString().split('T')[0],
+    date: getLocalDateStr(),
     orderNumber: `PED-${Math.floor(1000 + Math.random() * 9000)}`,
     clientName: '',
-    designerId: designers[0]?.id || '',
+    designerId: defaultDesignerId || activeDesigners[0]?.id || '',
     stage: 'criacao',
-    piecesCount: '',
+    workType: 'arte_nova',
+    piecesCount: '1',
     meters: '',
     orderType: 'sublimacao_total'
   });
 
-  const [rows, setRows] = useState([
-    createEmptyRow(1),
-    createEmptyRow(2),
-    createEmptyRow(3)
-  ]);
+  const [rows, setRows] = useState([]);
+
+  useEffect(() => {
+    if (isBatchEntryOpen) {
+      const defDes = activeDesigners[0]?.id || '';
+      setRows([
+        createEmptyRow(1, defDes),
+        createEmptyRow(2, defDes),
+        createEmptyRow(3, defDes)
+      ]);
+    }
+  }, [isBatchEntryOpen, activeDesigners]);
 
   if (!isBatchEntryOpen) return null;
 
@@ -33,13 +46,19 @@ export function BatchEntryModal() {
   const handleRowChange = (index, field, value) => {
     setRows((prev) => {
       const copy = [...prev];
-      copy[index] = { ...copy[index], [field]: value };
+      const updated = { ...copy[index], [field]: value };
+      if (field === 'stage') {
+        if ((value === 'criacao' || value === 'exportacao') && !updated.piecesCount) {
+          updated.piecesCount = '1';
+        }
+      }
+      copy[index] = updated;
       return copy;
     });
   };
 
   const addRow = () => {
-    setRows((prev) => [...prev, createEmptyRow(prev.length + 1)]);
+    setRows((prev) => [...prev, createEmptyRow(prev.length + 1, activeDesigners[0]?.id || '')]);
   };
 
   const removeRow = (index) => {
@@ -47,10 +66,9 @@ export function BatchEntryModal() {
     setRows((prev) => prev.filter((_, i) => i !== index));
   };
 
-  const handleSaveAll = (e) => {
+  const handleSaveAll = async (e) => {
     e.preventDefault();
 
-    // Filtra apenas linhas com cliente preenchido
     const validRows = rows.filter((r) => r.clientName.trim() !== '');
 
     if (validRows.length === 0) {
@@ -58,18 +76,18 @@ export function BatchEntryModal() {
       return;
     }
 
-    addBatchEntries(validRows);
+    await addBatchEntries(validRows);
     handleClose();
   };
 
   return (
     <div className="modal-overlay" onClick={handleClose}>
-      <div className="modal-content modal-lg" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-content modal-lg" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '940px' }}>
         {/* Cabeçalho */}
         <div className="modal-header">
           <div className="modal-title">
-            <Layers size={20} color="var(--accent-sky)" />
-            Lançamento em Lote (Múltiplos Pedidos de uma vez)
+            <Layers size={20} color="var(--accent-blue)" />
+            Lançamento em Lote (Múltiplos Pedidos ou Etapas de uma vez)
           </div>
           <button className="btn btn-secondary btn-icon-only btn-sm" onClick={handleClose}>
             <X size={18} />
@@ -80,7 +98,7 @@ export function BatchEntryModal() {
         <form onSubmit={handleSaveAll}>
           <div className="modal-body" style={{ maxHeight: '65vh', overflowY: 'auto' }}>
             <p style={{ fontSize: '0.8125rem', color: 'var(--text-muted)', marginBottom: '16px' }}>
-              Preencha rapidamente os pedidos finalizados do dia. Linhas sem o nome do cliente serão ignoradas automaticamente.
+              Preencha rapidamente os pedidos ou etapas do dia. Se você repetir o mesmo <strong>Nº Pedido</strong> de um pedido já existente, a nova etapa será vinculada a ele automaticamente!
             </p>
 
             <div className="table-responsive">
@@ -88,12 +106,13 @@ export function BatchEntryModal() {
                 <thead>
                   <tr>
                     <th style={{ width: '115px' }}>Data</th>
-                    <th style={{ width: '110px' }}>Nº Pedido</th>
+                    <th style={{ width: '105px' }}>Nº Pedido</th>
                     <th>Cliente / Detalhe Uniforme</th>
-                    <th style={{ width: '170px' }}>Designer</th>
-                    <th style={{ width: '130px' }}>Etapa</th>
-                    <th style={{ width: '80px' }}>Peças</th>
-                    <th style={{ width: '80px' }}>Metros</th>
+                    <th style={{ width: '155px' }}>Designer</th>
+                    <th style={{ width: '120px' }}>Etapa</th>
+                    <th style={{ width: '125px' }}>Tipo</th>
+                    <th style={{ width: '75px' }}>Qtd/Pçs</th>
+                    <th style={{ width: '75px' }}>Metros</th>
                     <th style={{ width: '40px' }}></th>
                   </tr>
                 </thead>
@@ -105,7 +124,7 @@ export function BatchEntryModal() {
                         <input
                           type="date"
                           className="form-input"
-                          style={{ padding: '6px 8px', fontSize: '0.78rem' }}
+                          style={{ padding: '6px 8px', fontSize: '0.76rem' }}
                           value={row.date}
                           onChange={(e) => handleRowChange(index, 'date', e.target.value)}
                           required
@@ -117,7 +136,7 @@ export function BatchEntryModal() {
                         <input
                           type="text"
                           className="form-input"
-                          style={{ padding: '6px 8px', fontSize: '0.8rem' }}
+                          style={{ padding: '6px 8px', fontSize: '0.78rem', fontFamily: 'monospace' }}
                           value={row.orderNumber}
                           onChange={(e) => handleRowChange(index, 'orderNumber', e.target.value)}
                           placeholder="PED-000"
@@ -129,7 +148,7 @@ export function BatchEntryModal() {
                         <input
                           type="text"
                           className="form-input"
-                          style={{ padding: '6px 8px', fontSize: '0.82rem' }}
+                          style={{ padding: '6px 8px', fontSize: '0.8rem' }}
                           value={row.clientName}
                           onChange={(e) => handleRowChange(index, 'clientName', e.target.value)}
                           placeholder="Ex: Time Azul - Jogo 2026"
@@ -140,11 +159,11 @@ export function BatchEntryModal() {
                       <td>
                         <select
                           className="form-select"
-                          style={{ padding: '6px 8px', fontSize: '0.8rem' }}
+                          style={{ padding: '6px 8px', fontSize: '0.78rem' }}
                           value={row.designerId}
                           onChange={(e) => handleRowChange(index, 'designerId', e.target.value)}
                         >
-                          {designers.map((d) => (
+                          {activeDesigners.map((d) => (
                             <option key={d.id} value={d.id}>
                               {d.name.split(' ')[0]} ({d.nickname || d.role})
                             </option>
@@ -156,7 +175,7 @@ export function BatchEntryModal() {
                       <td>
                         <select
                           className="form-select"
-                          style={{ padding: '6px 8px', fontSize: '0.8rem' }}
+                          style={{ padding: '6px 8px', fontSize: '0.78rem' }}
                           value={row.stage}
                           onChange={(e) => handleRowChange(index, 'stage', e.target.value)}
                         >
@@ -166,16 +185,33 @@ export function BatchEntryModal() {
                         </select>
                       </td>
 
-                      {/* Peças */}
+                      {/* Tipo / Motivo */}
+                      <td>
+                        <select
+                          className="form-select"
+                          style={{ padding: '6px 8px', fontSize: '0.78rem' }}
+                          value={row.workType || 'arte_nova'}
+                          onChange={(e) => handleRowChange(index, 'workType', e.target.value)}
+                        >
+                          {Object.values(WORK_TYPES).map((wt) => (
+                            <option key={wt.id} value={wt.id}>
+                              {wt.shortName || wt.name}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+
+                      {/* Peças / Qtd */}
                       <td>
                         <input
                           type="number"
                           min="0"
                           className="form-input"
-                          style={{ padding: '6px 8px', fontSize: '0.8rem', textAlign: 'center' }}
+                          style={{ padding: '6px 8px', fontSize: '0.78rem', textAlign: 'center' }}
                           value={row.piecesCount}
                           onChange={(e) => handleRowChange(index, 'piecesCount', e.target.value)}
-                          placeholder="0"
+                          placeholder={row.stage === 'impressao' ? 'Pçs' : '1'}
+                          title={row.stage === 'impressao' ? 'Quantidade de peças impressas' : 'Quantidade de artes ou fechamentos'}
                         />
                       </td>
 
@@ -186,10 +222,11 @@ export function BatchEntryModal() {
                           step="0.1"
                           min="0"
                           className="form-input"
-                          style={{ padding: '6px 8px', fontSize: '0.8rem', textAlign: 'center' }}
+                          style={{ padding: '6px 8px', fontSize: '0.78rem', textAlign: 'center' }}
                           value={row.meters}
                           onChange={(e) => handleRowChange(index, 'meters', e.target.value)}
                           placeholder="0"
+                          disabled={row.stage !== 'impressao'}
                         />
                       </td>
 
