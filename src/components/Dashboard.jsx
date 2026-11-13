@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useProduction } from '../context/ProductionContext';
+import { useAuth } from '../context/AuthContext';
 import {
   Plus,
   ChevronRight,
@@ -10,6 +11,9 @@ import 'chart.js/auto';
 import { Bar, Doughnut } from 'react-chartjs-2';
 
 export function Dashboard({ onSelectDesigner, onGoToTeam }) {
+  const { currentUser } = useAuth();
+  const isOperator = currentUser?.role === 'company_operator';
+
   const {
     metrics,
     periodFilter,
@@ -292,14 +296,16 @@ export function Dashboard({ onSelectDesigner, onGoToTeam }) {
           </span>
         </div>
 
-        <button
-          id="btn-adjust-sector-goals"
-          className="btn btn-secondary btn-sm"
-          onClick={() => setIsSectorGoalsModalOpen(true)}
-        >
-          <SlidersHorizontal size={13} />
-          Ajustar Metas
-        </button>
+        {!isOperator && (
+          <button
+            id="btn-adjust-sector-goals"
+            className="btn btn-secondary btn-sm"
+            onClick={() => setIsSectorGoalsModalOpen(true)}
+          >
+            <SlidersHorizontal size={13} />
+            Ajustar Metas
+          </button>
+        )}
       </div>
 
       {/* 1. Painel Integrado de Indicadores (Fita Contínua com Divisórias de 1px) */}

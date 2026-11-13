@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useProduction, getOrderQueueStatus } from '../context/ProductionContext';
+import { useAuth } from '../context/AuthContext';
 import { STAGES, ORDER_TYPES, WORK_TYPES } from '../constants/initialData';
 import {
   Search,
@@ -19,10 +20,15 @@ import {
   FileText,
   ArrowUpDown,
   ArrowUp,
-  ArrowDown
+  ArrowDown,
+  LayoutList,
+  Columns
 } from 'lucide-react';
 
 export function OrdersTable() {
+  const { currentUser } = useAuth();
+  const isOperator = currentUser?.role === 'company_operator';
+
   const {
     filteredOrders,
     queueStatusCounts,
@@ -45,6 +51,9 @@ export function OrdersTable() {
     openAddStageToOrder,
     openEditStageInOrder
   } = useProduction();
+
+  // Alternância entre Modo Tabela e Modo Quadro Kanban
+  const [viewMode, setViewMode] = useState('table'); // 'table' | 'kanban'
 
   // Controle de linhas expandidas para ver o histórico de lançamentos do pedido
   const [expandedOrders, setExpandedOrders] = useState(new Set());
@@ -198,60 +207,116 @@ export function OrdersTable() {
 
   return (
     <div className="orders-view">
-      {/* 1. Pílulas Rápidas de Status da Fila de Pendências */}
+      {/* 1. Pílulas Rápidas de Status da Fila de Pendências + Seletor Tabela / Kanban */}
       <div
         style={{
           display: 'flex',
           alignItems: 'center',
-          gap: '6px',
+          justifyContent: 'space-between',
+          gap: '10px',
           marginBottom: '12px',
           flexWrap: 'wrap'
         }}
       >
-        <span style={{ fontSize: '0.73rem', fontWeight: 600, color: 'var(--text-muted)', marginRight: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          Fila:
-        </span>
-        {queuePills.map((pill) => {
-          const isActive = selectedQueueStatusFilter === pill.id;
-          return (
-            <button
-              key={pill.id}
-              type="button"
-              onClick={() => setSelectedQueueStatusFilter(pill.id)}
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: '7px',
-                padding: '5px 11px',
-                borderRadius: 'var(--radius-md)',
-                fontSize: '0.75rem',
-                fontWeight: isActive ? 600 : 500,
-                background: isActive ? 'var(--bg-surface-elevated)' : 'var(--bg-secondary)',
-                border: isActive ? '1px solid var(--border-light)' : '1px solid var(--border-subtle)',
-                color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
-                cursor: 'pointer',
-                transition: 'var(--trans-fast)'
-              }}
-            >
-              {pill.dot && <span className="status-dot" style={{ background: pill.dot }} />}
-              <span>{pill.label}</span>
-              <span
-                className="mono"
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+          <span style={{ fontSize: '0.73rem', fontWeight: 600, color: 'var(--text-muted)', marginRight: '4px', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Fila:
+          </span>
+          {queuePills.map((pill) => {
+            const isActive = selectedQueueStatusFilter === pill.id;
+            return (
+              <button
+                key={pill.id}
+                type="button"
+                onClick={() => setSelectedQueueStatusFilter(pill.id)}
                 style={{
-                  fontSize: '0.68rem',
-                  fontWeight: 600,
-                  padding: '0px 5px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: isActive ? 'var(--bg-primary)' : 'var(--bg-surface)',
-                  color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
-                  border: '1px solid var(--border-subtle)'
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '7px',
+                  padding: '5px 11px',
+                  borderRadius: 'var(--radius-md)',
+                  fontSize: '0.75rem',
+                  fontWeight: isActive ? 600 : 500,
+                  background: isActive ? 'var(--bg-surface-elevated)' : 'var(--bg-secondary)',
+                  border: isActive ? '1px solid var(--border-light)' : '1px solid var(--border-subtle)',
+                  color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+                  cursor: 'pointer',
+                  transition: 'var(--trans-fast)'
                 }}
               >
-                {pill.count}
-              </span>
-            </button>
-          );
-        })}
+                {pill.dot && <span className="status-dot" style={{ background: pill.dot }} />}
+                <span>{pill.label}</span>
+                <span
+                  className="mono"
+                  style={{
+                    fontSize: '0.68rem',
+                    fontWeight: 600,
+                    padding: '0px 5px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: isActive ? 'var(--bg-primary)' : 'var(--bg-surface)',
+                    color: isActive ? 'var(--text-primary)' : 'var(--text-muted)',
+                    border: '1px solid var(--border-subtle)'
+                  }}
+                >
+                  {pill.count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Seletor de Modo: Tabela vs Quadro Kanban */}
+        <div
+          style={{
+            display: 'inline-flex',
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 'var(--radius-md)',
+            padding: '2px',
+            gap: '2px'
+          }}
+        >
+          <button
+            type="button"
+            onClick={() => setViewMode('table')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 10px',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '0.73rem',
+              fontWeight: viewMode === 'table' ? 600 : 500,
+              background: viewMode === 'table' ? 'var(--bg-surface-elevated)' : 'transparent',
+              color: viewMode === 'table' ? 'var(--text-primary)' : 'var(--text-muted)',
+              border: viewMode === 'table' ? '1px solid var(--border-light)' : '1px solid transparent',
+              cursor: 'pointer'
+            }}
+          >
+            <LayoutList size={13} />
+            Tabela
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode('kanban')}
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '5px',
+              padding: '4px 10px',
+              borderRadius: 'var(--radius-sm)',
+              fontSize: '0.73rem',
+              fontWeight: viewMode === 'kanban' ? 600 : 500,
+              background: viewMode === 'kanban' ? 'var(--bg-surface-elevated)' : 'transparent',
+              color: viewMode === 'kanban' ? 'var(--text-primary)' : 'var(--text-muted)',
+              border: viewMode === 'kanban' ? '1px solid var(--border-light)' : '1px solid transparent',
+              cursor: 'pointer'
+            }}
+          >
+            <Columns size={13} />
+            Quadro Kanban
+          </button>
+        </div>
       </div>
 
       {/* 2. Barra de Filtros e Busca */}
@@ -281,7 +346,7 @@ export function OrdersTable() {
             type="text"
             className="form-input"
             style={{ paddingLeft: '34px' }}
-            placeholder="Buscar por cliente, pedido, designer..."
+            placeholder="Buscar por cliente, pedido, designer... (Ctrl+K)"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
@@ -333,16 +398,18 @@ export function OrdersTable() {
             <option value="reposicao">Reposição</option>
           </select>
 
-          {/* Botão Exportar CSV */}
-          <button
-            id="btn-export-csv"
-            className="btn btn-secondary btn-sm"
-            onClick={exportToCSV}
-            title="Exportar dados filtrados para planilha Excel/CSV"
-          >
-            <Download size={14} />
-            CSV
-          </button>
+          {/* Botão Exportar CSV (apenas Gestor / Super Admin) */}
+          {!isOperator && (
+            <button
+              id="btn-export-csv"
+              className="btn btn-secondary btn-sm"
+              onClick={exportToCSV}
+              title="Exportar dados filtrados para planilha Excel/CSV"
+            >
+              <Download size={14} />
+              CSV
+            </button>
+          )}
 
           {/* Botão Novo Pedido */}
           <button
@@ -440,6 +507,285 @@ export function OrdersTable() {
               <PlusCircle size={14} />
               Criar Primeiro Pedido
             </button>
+          </div>
+        ) : viewMode === 'kanban' ? (
+          /* MODO QUADRO KANBAN (4 COLUNAS) */
+          <div
+            style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(auto-fit, minmax(255px, 1fr))',
+              gap: '14px',
+              padding: '16px',
+              background: 'var(--bg-primary)'
+            }}
+          >
+            {[
+              {
+                id: 'aguardando_arte',
+                title: '1. Aguardando Arte',
+                color: '#a1a1aa',
+                dot: '#71717a',
+                nextStage: 'criacao',
+                nextLabel: '+ Criar Arte',
+                nextColor: '#60a5fa'
+              },
+              {
+                id: 'falta_exportar',
+                title: '2. Falta Exportar',
+                color: '#60a5fa',
+                dot: '#3b82f6',
+                nextStage: 'exportacao',
+                nextLabel: '+ Exportar',
+                nextColor: '#a78bfa'
+              },
+              {
+                id: 'falta_imprimir',
+                title: '3. Pronto p/ Imprimir',
+                color: '#a78bfa',
+                dot: '#8b5cf6',
+                nextStage: 'impressao',
+                nextLabel: '+ Imprimir',
+                nextColor: '#34d399'
+              },
+              {
+                id: 'concluido',
+                title: '4. Concluídos (100%)',
+                color: '#34d399',
+                dot: '#10b981',
+                nextStage: null,
+                nextLabel: null,
+                nextColor: null
+              }
+            ].map((col) => {
+              const colOrders = sortedOrders.filter((o) => getOrderQueueStatus(o) === col.id);
+              const colPieces = colOrders.reduce((acc, o) => acc + (Number(o.totalPieces) || 0), 0);
+
+              return (
+                <div
+                  key={col.id}
+                  style={{
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-subtle)',
+                    borderRadius: 'var(--radius-md)',
+                    display: 'flex',
+                    flexDirection: 'column',
+                    maxHeight: '680px'
+                  }}
+                >
+                  {/* Cabeçalho da Coluna Kanban */}
+                  <div
+                    style={{
+                      padding: '10px 12px',
+                      borderBottom: '1px solid var(--border-subtle)',
+                      background: 'var(--bg-surface)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      gap: '8px'
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                      <span className="status-dot" style={{ background: col.dot }} />
+                      <span style={{ fontSize: '0.76rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                        {col.title}
+                      </span>
+                    </div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                      <span className="mono" style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>
+                        {colPieces} pçs
+                      </span>
+                      <span
+                        className="mono"
+                        style={{
+                          fontSize: '0.68rem',
+                          fontWeight: 700,
+                          padding: '1px 6px',
+                          borderRadius: 'var(--radius-sm)',
+                          background: 'var(--bg-secondary)',
+                          border: '1px solid var(--border-light)',
+                          color: col.color
+                        }}
+                      >
+                        {colOrders.length}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Lista de Cards da Coluna */}
+                  <div
+                    style={{
+                      padding: '10px',
+                      display: 'flex',
+                      flexDirection: 'column',
+                      gap: '8px',
+                      overflowY: 'auto',
+                      flex: 1
+                    }}
+                  >
+                    {colOrders.length === 0 ? (
+                      <div
+                        style={{
+                          padding: '28px 12px',
+                          textAlign: 'center',
+                          fontSize: '0.73rem',
+                          color: 'var(--text-muted)',
+                          border: '1px dashed var(--border-subtle)',
+                          borderRadius: 'var(--radius-sm)'
+                        }}
+                      >
+                        Nenhum pedido nesta etapa
+                      </div>
+                    ) : (
+                      colOrders.map((ord) => {
+                        const wt = WORK_TYPES[ord.workType || 'arte_nova'] || WORK_TYPES.arte_nova;
+                        const ordEntries = ord.entries || [];
+                        return (
+                          <div
+                            key={ord.id}
+                            style={{
+                              background: 'var(--bg-surface)',
+                              border: '1px solid var(--border-light)',
+                              borderRadius: 'var(--radius-sm)',
+                              padding: '10px 12px',
+                              display: 'flex',
+                              flexDirection: 'column',
+                              gap: '7px'
+                            }}
+                          >
+                            {/* Linha 1: Código + Data + Ações */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '6px' }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                <span
+                                  className="mono"
+                                  style={{
+                                    fontSize: '0.73rem',
+                                    fontWeight: 700,
+                                    color: 'var(--text-primary)',
+                                    background: 'var(--bg-secondary)',
+                                    border: '1px solid var(--border-subtle)',
+                                    padding: '1px 6px',
+                                    borderRadius: '3px'
+                                  }}
+                                >
+                                  {ord.orderNumber}
+                                </span>
+                                <span
+                                  style={{
+                                    fontSize: '0.62rem',
+                                    fontWeight: 600,
+                                    color: wt.color,
+                                    background: wt.bgLight,
+                                    border: `1px solid ${wt.border}`,
+                                    padding: '0px 5px',
+                                    borderRadius: '3px'
+                                  }}
+                                >
+                                  {wt.name}
+                                </span>
+                              </div>
+                              <span className="mono" style={{ fontSize: '0.67rem', color: 'var(--text-muted)' }}>
+                                {formatDateBR(ord.date)}
+                              </span>
+                            </div>
+
+                            {/* Linha 2: Nome do Cliente + Observação */}
+                            <div>
+                              <div style={{ fontSize: '0.82rem', fontWeight: 600, color: 'var(--text-primary)', lineHeight: 1.25 }}>
+                                {ord.clientName}
+                              </div>
+                              {ord.notes && (
+                                <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                                  {ord.notes}
+                                </div>
+                              )}
+                            </div>
+
+                            {/* Linha 3: Peças + Designers que já atuaram */}
+                            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px', fontSize: '0.7rem' }}>
+                              <span className="mono" style={{ fontWeight: 600, color: 'var(--text-secondary)' }}>
+                                {ord.totalPieces > 0 ? `${ord.totalPieces} pçs` : 'Sem qtd'}
+                              </span>
+                              {ordEntries.length > 0 && (
+                                <span style={{ color: 'var(--text-muted)', fontSize: '0.68rem' }}>
+                                  {Array.from(new Set(ordEntries.map((e) => e.designerName))).join(', ')}
+                                </span>
+                              )}
+                            </div>
+
+                            {/* Linha 4: Botão de Avanço Rápido 1-Clique + Editar */}
+                            <div
+                              style={{
+                                display: 'flex',
+                                alignItems: 'center',
+                                justifyContent: 'space-between',
+                                gap: '6px',
+                                paddingTop: '6px',
+                                borderTop: '1px solid var(--border-subtle)'
+                              }}
+                            >
+                              {col.nextStage ? (
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-sm"
+                                  style={{
+                                    flex: 1,
+                                    padding: '4px 8px',
+                                    fontSize: '0.71rem',
+                                    color: col.nextColor,
+                                    borderColor: 'var(--border-light)',
+                                    justifyContent: 'center'
+                                  }}
+                                  onClick={() => openAddStageToOrder(ord, col.nextStage)}
+                                >
+                                  {col.nextLabel}
+                                </button>
+                              ) : (
+                                <span
+                                  className="mono"
+                                  style={{
+                                    fontSize: '0.68rem',
+                                    color: 'var(--accent-emerald)',
+                                    display: 'inline-flex',
+                                    alignItems: 'center',
+                                    gap: '4px',
+                                    fontWeight: 600
+                                  }}
+                                >
+                                  <Check size={11} /> Finalizado
+                                </span>
+                              )}
+
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                <button
+                                  type="button"
+                                  className="btn btn-secondary btn-icon-only btn-sm"
+                                  style={{ width: '24px', height: '24px' }}
+                                  onClick={() => handleEditOrder(ord)}
+                                  title="Editar pedido"
+                                >
+                                  <Edit3 size={11} />
+                                </button>
+                                {!isOperator && (
+                                  <button
+                                    type="button"
+                                    className="btn btn-danger btn-icon-only btn-sm"
+                                    style={{ width: '24px', height: '24px' }}
+                                    onClick={() => handleDeleteOrder(ord)}
+                                    title="Excluir pedido"
+                                  >
+                                    <Trash2 size={11} />
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         ) : (
           <div className="table-responsive">
@@ -835,16 +1181,18 @@ export function OrdersTable() {
                               <Edit3 size={12} />
                             </button>
 
-                            {/* Excluir Pedido */}
-                            <button
-                              type="button"
-                              className="btn btn-danger btn-icon-only btn-sm"
-                              style={{ width: '26px', height: '26px' }}
-                              onClick={() => handleDeleteOrder(order)}
-                              title="Excluir este pedido e seus lançamentos"
-                            >
-                              <Trash2 size={12} />
-                            </button>
+                            {/* Excluir Pedido (oculto para Operadores) */}
+                            {!isOperator && (
+                              <button
+                                type="button"
+                                className="btn btn-danger btn-icon-only btn-sm"
+                                style={{ width: '26px', height: '26px' }}
+                                onClick={() => handleDeleteOrder(order)}
+                                title="Excluir este pedido e seus lançamentos"
+                              >
+                                <Trash2 size={12} />
+                              </button>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -994,15 +1342,17 @@ export function OrdersTable() {
                                           >
                                             <Edit3 size={11} />
                                           </button>
-                                          <button
-                                            type="button"
-                                            className="btn btn-danger btn-icon-only btn-sm"
-                                            style={{ width: '24px', height: '24px' }}
-                                            onClick={() => handleDeleteLaunch(order.id, entry.id, entryStage.name)}
-                                            title="Excluir este lançamento"
-                                          >
-                                            <Trash2 size={11} />
-                                          </button>
+                                          {!isOperator && (
+                                            <button
+                                              type="button"
+                                              className="btn btn-danger btn-icon-only btn-sm"
+                                              style={{ width: '24px', height: '24px' }}
+                                              onClick={() => handleDeleteLaunch(order.id, entry.id, entryStage.name)}
+                                              title="Excluir este lançamento"
+                                            >
+                                              <Trash2 size={11} />
+                                            </button>
+                                          )}
                                         </div>
                                       </div>
                                     );

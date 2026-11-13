@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useProduction } from '../context/ProductionContext';
+import { useAuth } from '../context/AuthContext';
 import {
   UserPlus,
   Edit3,
@@ -14,6 +15,9 @@ import {
 } from 'lucide-react';
 
 export function TeamManagement() {
+  const { currentUser } = useAuth();
+  const isOperator = currentUser?.role === 'company_operator';
+
   const {
     designers,
     addDesigner,
@@ -127,14 +131,16 @@ export function TeamManagement() {
           </p>
         </div>
 
-        <button
-          id="btn-add-designer"
-          className="btn btn-primary btn-sm"
-          onClick={handleOpenNew}
-        >
-          <UserPlus size={14} />
-          Novo Profissional
-        </button>
+        {!isOperator && (
+          <button
+            id="btn-add-designer"
+            className="btn btn-primary btn-sm"
+            onClick={handleOpenNew}
+          >
+            <UserPlus size={14} />
+            Novo Profissional
+          </button>
+        )}
       </div>
 
       {/* Formulário Modal para Criar/Editar Designer */}
@@ -396,29 +402,31 @@ export function TeamManagement() {
                     </div>
                   </div>
 
-                  <div style={{ display: 'flex', gap: '4px' }}>
-                    <button
-                      className="btn btn-secondary btn-icon-only btn-sm"
-                      onClick={() => handleToggleActive(designer)}
-                      title={isPaused ? 'Reativar designer na equipe' : 'Pausar designer (Férias / Afastamento)'}
-                    >
-                      {isPaused ? <PlayCircle size={13} color="#34d399" /> : <PauseCircle size={13} color="#fbbf24" />}
-                    </button>
-                    <button
-                      className="btn btn-secondary btn-icon-only btn-sm"
-                      onClick={() => handleOpenEdit(designer)}
-                      title="Editar metas e dados"
-                    >
-                      <Edit3 size={13} />
-                    </button>
-                    <button
-                      className="btn btn-danger btn-icon-only btn-sm"
-                      onClick={() => handleDelete(designer.id, designer.name)}
-                      title="Remover designer"
-                    >
-                      <Trash2 size={13} />
-                    </button>
-                  </div>
+                  {!isOperator && (
+                    <div style={{ display: 'flex', gap: '4px' }}>
+                      <button
+                        className="btn btn-secondary btn-icon-only btn-sm"
+                        onClick={() => handleToggleActive(designer)}
+                        title={isPaused ? 'Reativar designer na equipe' : 'Pausar designer (Férias / Afastamento)'}
+                      >
+                        {isPaused ? <PlayCircle size={13} color="#34d399" /> : <PauseCircle size={13} color="#fbbf24" />}
+                      </button>
+                      <button
+                        className="btn btn-secondary btn-icon-only btn-sm"
+                        onClick={() => handleOpenEdit(designer)}
+                        title="Editar metas e dados"
+                      >
+                        <Edit3 size={13} />
+                      </button>
+                      <button
+                        className="btn btn-danger btn-icon-only btn-sm"
+                        onClick={() => handleDelete(designer.id, designer.name)}
+                        title="Remover designer"
+                      >
+                        <Trash2 size={13} />
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 {/* Médias Diárias Reais por Categoria */}
@@ -484,26 +492,30 @@ export function TeamManagement() {
                     Folgas/Atestados no Período:
                   </span>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      style={{ padding: '1px 6px', height: '22px', fontSize: '0.72rem' }}
-                      onClick={() => setDesignerAbsenceDays(designer.id, Math.max(0, absenceDays - 1))}
-                      disabled={absenceDays <= 0}
-                    >
-                      -
-                    </button>
+                    {!isOperator && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '1px 6px', height: '22px', fontSize: '0.72rem' }}
+                        onClick={() => setDesignerAbsenceDays(designer.id, Math.max(0, absenceDays - 1))}
+                        disabled={absenceDays <= 0}
+                      >
+                        -
+                      </button>
+                    )}
                     <strong style={{ minWidth: '42px', textAlign: 'center', color: absenceDays > 0 ? '#38bdf8' : 'var(--text-primary)' }}>
                       {absenceDays} dia{absenceDays !== 1 ? 's' : ''}
                     </strong>
-                    <button
-                      type="button"
-                      className="btn btn-secondary btn-sm"
-                      style={{ padding: '1px 6px', height: '22px', fontSize: '0.72rem' }}
-                      onClick={() => setDesignerAbsenceDays(designer.id, absenceDays + 1)}
-                    >
-                      +
-                    </button>
+                    {!isOperator && (
+                      <button
+                        type="button"
+                        className="btn btn-secondary btn-sm"
+                        style={{ padding: '1px 6px', height: '22px', fontSize: '0.72rem' }}
+                        onClick={() => setDesignerAbsenceDays(designer.id, absenceDays + 1)}
+                      >
+                        +
+                      </button>
+                    )}
                   </div>
                 </div>
 

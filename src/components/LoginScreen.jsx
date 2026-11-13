@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { KromaLogo } from './KromaLogo';
-import { Lock, User, Eye, EyeOff, AlertCircle, ArrowRight } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, AlertCircle, ArrowRight, MessageCircle } from 'lucide-react';
 
 export function LoginScreen() {
-  const { login, lockoutState } = useAuth();
+  const { login, lockoutState, saasConfig } = useAuth();
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
+  const [billingBlockInfo, setBillingBlockInfo] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [lockRemaining, setLockRemaining] = useState(0);
 
@@ -26,6 +27,7 @@ export function LoginScreen() {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setErrorMsg('');
+    setBillingBlockInfo(null);
 
     if (!username.trim() || !password) {
       setErrorMsg('Preencha seu login/e-mail e senha.');
@@ -37,10 +39,24 @@ export function LoginScreen() {
       const res = await login(username, password);
       if (!res.ok) {
         setErrorMsg(res.error || 'Falha na autenticação.');
+        if (res.isBillingBlock) {
+          setBillingBlockInfo({
+            tenantName: res.tenantName || 'Minha Empresa'
+          });
+        }
       }
     } finally {
       setIsSubmitting(false);
     }
+  };
+
+  const buildWhatsappRenewUrl = () => {
+    const rawPhone = (saasConfig?.supportWhatsapp || '').replace(/\D/g, '');
+    const companyText = billingBlockInfo?.tenantName ? ` da empresa *${billingBlockInfo.tenantName}*` : '';
+    const msg = encodeURIComponent(
+      `Olá! Gostaria de regularizar/renovar a assinatura do sistema KromaOPS${companyText} (Login: ${username.trim()}).`
+    );
+    return rawPhone ? `https://wa.me/${rawPhone}?text=${msg}` : `https://wa.me/?text=${msg}`;
   };
 
   return (
@@ -91,23 +107,9 @@ export function LoginScreen() {
             <h1 style={{ fontSize: '1.35rem', fontWeight: 700, letterSpacing: '-0.03em', color: '#fafafa' }}>
               Kroma<span style={{ color: '#3b82f6' }}>OPS</span>
             </h1>
-            <span
-              className="mono"
-              style={{
-                fontSize: '0.62rem',
-                padding: '1px 5px',
-                borderRadius: '4px',
-                background: '#18181b',
-                border: '1px solid #2e2e34',
-                color: '#a1a1aa',
-                fontWeight: 600
-              }}
-            >
-              SAAS PRO
-            </span>
           </div>
           <p style={{ fontSize: '0.77rem', color: '#71717a', marginTop: '4px' }}>
-            Acesse o painel operacional da sua unidade ou central SaaS
+            Gestão de Produção, Arte & Impressão
           </p>
         </div>
 
@@ -121,19 +123,46 @@ export function LoginScreen() {
               padding: '10px 12px',
               marginBottom: '16px',
               display: 'flex',
-              alignItems: 'flex-start',
-              gap: '8px',
+              flexDirection: 'column',
+              gap: '10px',
               fontSize: '0.76rem',
               color: '#f87171',
               lineHeight: 1.4
             }}
           >
-            <AlertCircle size={15} style={{ flexShrink: 0, marginTop: '1px' }} />
-            <span>
-              {lockRemaining > 0
-                ? `Muitas tentativas incorretas. Aguarde ${lockRemaining}s para tentar novamente.`
-                : errorMsg}
-            </span>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <AlertCircle size={15} style={{ flexShrink: 0, marginTop: '1px' }} />
+              <span>
+                {lockRemaining > 0
+                  ? `Muitas tentativas incorretas. Aguarde ${lockRemaining}s para tentar novamente.`
+                  : errorMsg}
+              </span>
+            </div>
+
+            {billingBlockInfo && lockRemaining === 0 && (
+              <a
+                href={buildWhatsappRenewUrl()}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '6px',
+                  background: '#10b981',
+                  color: '#052e16',
+                  fontWeight: 700,
+                  fontSize: '0.75rem',
+                  padding: '8px 12px',
+                  borderRadius: '5px',
+                  textDecoration: 'none',
+                  transition: 'opacity 0.15s'
+                }}
+              >
+                <MessageCircle size={14} />
+                Regularizar Assinatura no WhatsApp
+              </a>
+            )}
           </div>
         )}
 

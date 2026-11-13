@@ -139,6 +139,25 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
   const SYS_CONFIG_ENTRY_ID = STORAGE_KEYS.SYS_CONFIG_ID;
   const isDefaultTenant = !tenantId || tenantId === 'tenant_default';
 
+  const scopeIdForTenant = useCallback(
+    (rawId) => {
+      const strId = String(rawId || '');
+      if (isDefaultTenant) return strId;
+      return strId.startsWith(`${tenantId}__`) ? strId : `${tenantId}__${strId}`;
+    },
+    [isDefaultTenant, tenantId]
+  );
+
+  const belongsToCurrentTenant = useCallback(
+    (rowId) => {
+      const strId = String(rowId || '');
+      if (!strId || strId.startsWith('__')) return false;
+      if (isDefaultTenant) return !strId.startsWith('tenant_');
+      return strId.startsWith(`${tenantId}__`);
+    },
+    [isDefaultTenant, tenantId]
+  );
+
   const [isSupabaseActive] = useState(() => isSupabaseConfigured());
   const [isLoadingDB, setIsLoadingDB] = useState(false);
   const [toastNotice, setToastNotice] = useState(null);
@@ -396,24 +415,27 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
     }
   }, [SYS_CONFIG_ENTRY_ID, STORAGE_KEYS, isDefaultTenant]);
 
-  // Carregar dados remotos do Supabase se configurado
+  // Carregar dados remotos do Supabase se configurado (com isolamento Multi-Tenant por empresa)
   useEffect(() => {
-    if (!isSupabaseActive || !supabase || !isDefaultTenant) return;
+    if (!isSupabaseActive || !supabase) return;
 
     async function loadFromSupabase() {
       setIsLoadingDB(true);
       try {
-        // Buscar designers
+        // Buscar designers filtrados para o tenant atual
         const { data: dbDesigners, error: desError } = await supabase
           .from('designers')
           .select('*')
           .order('name', { ascending: true });
 
         if (!desError && dbDesigners) {
-          setDesigners(dbDesigners.map(mapDesignerFromDB));
+          const tenantDesigners = dbDesigners.filter((r) => belongsToCurrentTenant(r.id));
+          if (tenantDesigners.length > 0 || !isDefaultTenant) {
+            setDesigners(tenantDesigners.map(mapDesignerFromDB));
+          }
         }
 
-        // Buscar lançamentos e agrupar em pedidos
+        // Buscar lançamentos e agrupar em pedidos filtrados para o tenant atual
         const { data: dbEntries, error: entError } = await supabase
           .from('production_entries')
           .select('*')
@@ -421,9 +443,12 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
 
         if (!entError && dbEntries && dbEntries.length > 0) {
           applyRemoteConfigIfPresent(dbEntries);
-          const mappedEntries = dbEntries.map(mapEntryFromDB);
-          const groupedOrders = groupEntriesIntoOrders(mappedEntries);
-          setOrders(groupedOrders);
+          const tenantEntries = dbEntries.filter((r) => belongsToCurrentTenant(r.id));
+          if (tenantEntries.length > 0 || !isDefaultTenant) {
+            const mappedEntries = tenantEntries.map(mapEntryFromDB);
+            const groupedOrders = groupEntriesIntoOrders(mappedEntries);
+            setOrders(groupedOrders);
+          }
         }
       } catch (err) {
         console.error('Erro ao conectar ao Supabase:', err);
@@ -433,7 +458,7 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
     }
 
     loadFromSupabase();
-  }, [isSupabaseActive, applyRemoteConfigIfPresent]);
+  }, [isSupabaseActive, applyRemoteConfigIfPresent, belongsToCurrentTenant, isDefaultTenant]);
 
   // Lista plana de lançamentos (derivada de todos os pedidos)
   const entries = useMemo(() => {
@@ -566,13 +591,13 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
 
   // Criar Novo Pedido com lançamentos opcionais/iniciais
   const addOrder = async (orderData, stageEntries = []) => {
-    const orderId = `ord_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const orderId = scopeIdForTenant(`ord_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`);
 
     const formattedEntries = stageEntries.map((stg, idx) => {
       const des = designers.find((d) => d.id === stg.designerId);
       return {
         ...stg,
-        id: `ent_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`,
+        id: scopeIdForTenant(`ent_${Date.now()}_${idx}_${Math.random().toString(36).slice(2, 6)}`),
         designerName: des ? des.name : (stg.designerName || 'Designer'),
         workType: stg.workType || orderData.workType || 'arte_nova',
         piecesCount: Number(stg.piecesCount) || 0,
@@ -613,7 +638,7 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
           // Persiste cabeçalho do pedido mesmo quando criado em "Aguardando Início" (sem etapas)
           await supabase.from('production_entries').insert(
             mapEntryToDB({
-              id: `pend_${newOrder.id}`,
+              id: scopeIdForTenant(`pend_${newOrder.id}`),
               orderNumber: newOrder.orderNumber,
               clientName: newOrder.clientName,
               designerId: null,
@@ -660,11 +685,11 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
       setEditingOrder(updatedOrder);
     }
 
-    // Sincroniza alterações do cabeçalho no Supabase
+    // Sincroniza alterações do cabeçalho no Supabase (isolado pelo tenant)
     if (isSupabaseActive && supabase && (updatedOrder || existingOrder)) {
       const targetOrd = updatedOrder || { ...existingOrder, ...updatedFields };
       try {
-        await supabase
+        const updQuery = supabase
           .from('production_entries')
           .update({
             order_number: targetOrd.orderNumber,
@@ -673,6 +698,7 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
             work_type: targetOrd.workType || 'arte_nova'
           })
           .eq('order_number', previousOrderNumber || targetOrd.orderNumber);
+        await (isDefaultTenant ? updQuery.not('id', 'like', 'tenant_%') : updQuery.like('id', `${tenantId}__%`));
       } catch (err) {
         console.error('Erro ao atualizar pedido no Supabase:', err);
       }
@@ -686,10 +712,11 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
 
     if (isSupabaseActive && supabase && target) {
       try {
-        await supabase
+        const delQuery = supabase
           .from('production_entries')
           .delete()
           .eq('order_number', target.orderNumber);
+        await (isDefaultTenant ? delQuery.not('id', 'like', 'tenant_%') : delQuery.like('id', `${tenantId}__%`));
       } catch (err) {
         console.error('Erro ao excluir pedido no Supabase:', err);
       }
@@ -701,7 +728,7 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
     const designer = designers.find((d) => d.id === newEntryData.designerId);
     const newEntry = {
       ...newEntryData,
-      id: `ent_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      id: scopeIdForTenant(`ent_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`),
       designerName: designer ? designer.name : (newEntryData.designerName || 'Designer'),
       workType: newEntryData.workType || 'arte_nova',
       piecesCount: Number(newEntryData.piecesCount) || 0,
@@ -741,11 +768,12 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
           })
         );
         // Remove eventual registro placeholder "pendente" deste pedido
-        await supabase
+        const pendDelQuery = supabase
           .from('production_entries')
           .delete()
           .eq('order_number', targetOrder.orderNumber)
           .eq('stage', 'pendente');
+        await (isDefaultTenant ? pendDelQuery.not('id', 'like', 'tenant_%') : pendDelQuery.like('id', `${tenantId}__%`));
       } catch (err) {
         console.error('Erro ao salvar lançamento no Supabase:', err);
       }
@@ -825,7 +853,7 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
         if (targetOrder && remainingEntries.length === 0) {
           await supabase.from('production_entries').insert(
             mapEntryToDB({
-              id: `pend_${targetOrder.id}`,
+              id: scopeIdForTenant(`pend_${targetOrder.id}`),
               orderNumber: targetOrder.orderNumber,
               clientName: targetOrder.clientName,
               designerId: null,
@@ -903,7 +931,7 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
   const addDesigner = async (newDes) => {
     const designer = {
       ...newDes,
-      id: `des_${Date.now()}`,
+      id: scopeIdForTenant(`des_${Date.now()}`),
       active: newDes.active ?? true,
       goalCriacaoArtes: Number(newDes.goalCriacaoArtes) || 0,
       goalExportacao: Number(newDes.goalExportacao) || 0,
@@ -978,8 +1006,13 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
 
     if (isSupabaseActive && supabase) {
       try {
-        await supabase.from('production_entries').delete().neq('id', 'placeholder');
-        await supabase.from('designers').delete().neq('id', 'placeholder');
+        if (isDefaultTenant) {
+          await supabase.from('production_entries').delete().not('id', 'like', 'tenant_%').not('id', 'like', '__%');
+          await supabase.from('designers').delete().not('id', 'like', 'tenant_%');
+        } else {
+          await supabase.from('production_entries').delete().like('id', `${tenantId}__%`);
+          await supabase.from('designers').delete().like('id', `${tenantId}__%`);
+        }
       } catch (err) {
         console.error('Erro ao limpar Supabase:', err);
       }
@@ -1000,18 +1033,25 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
     try {
       setIsLoadingDB(true);
       if (designers.length > 0) {
-        const { error: desErr } = await supabase.from('designers').upsert(designers.map(mapDesignerToDB));
+        const scopedDesigners = designers.map((d) => mapDesignerToDB({ ...d, id: scopeIdForTenant(d.id) }));
+        const { error: desErr } = await supabase.from('designers').upsert(scopedDesigners);
         if (desErr) throw desErr;
       }
 
       // Inclui tanto lançamentos reais quanto pedidos sem lançamentos ("pendente")
       const allPayloadEntries = [
-        ...entries.map(mapEntryToDB),
+        ...entries.map((e) =>
+          mapEntryToDB({
+            ...e,
+            id: scopeIdForTenant(e.id),
+            designerId: e.designerId ? scopeIdForTenant(e.designerId) : null
+          })
+        ),
         ...orders
           .filter((o) => !o.entries || o.entries.length === 0)
           .map((o) =>
             mapEntryToDB({
-              id: `pend_${o.id}`,
+              id: scopeIdForTenant(`pend_${o.id}`),
               orderNumber: o.orderNumber,
               clientName: o.clientName,
               designerId: null,
@@ -1049,12 +1089,16 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
     setIsLoadingDB(true);
     try {
       const { data: dbDes } = await supabase.from('designers').select('*').order('name');
-      if (dbDes) setDesigners(dbDes.map(mapDesignerFromDB));
+      if (dbDes) {
+        const tenantDesigners = dbDes.filter((r) => belongsToCurrentTenant(r.id));
+        setDesigners(tenantDesigners.map(mapDesignerFromDB));
+      }
 
       const { data: dbEnt } = await supabase.from('production_entries').select('*').order('date', { ascending: false });
       if (dbEnt) {
         applyRemoteConfigIfPresent(dbEnt);
-        const mappedEntries = dbEnt.map(mapEntryFromDB);
+        const tenantEntries = dbEnt.filter((r) => belongsToCurrentTenant(r.id));
+        const mappedEntries = tenantEntries.map(mapEntryFromDB);
         setOrders(groupEntriesIntoOrders(mappedEntries));
       }
     } catch (e) {

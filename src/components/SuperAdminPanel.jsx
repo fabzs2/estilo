@@ -12,7 +12,8 @@ import {
   ExternalLink,
   Calendar,
   X,
-  Check
+  Check,
+  MessageCircle
 } from 'lucide-react';
 
 export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
@@ -20,6 +21,8 @@ export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
     currentUser,
     tenants,
     users,
+    saasConfig,
+    updateSaasConfig,
     activeTenantId,
     setImpersonatedTenantId,
     createCompanyWithManager,
@@ -29,6 +32,8 @@ export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
     updateUserCredentials,
     deleteUser
   } = useAuth();
+
+  const [whatsappInput, setWhatsappInput] = useState(saasConfig?.supportWhatsapp || '');
 
   // Modal Nova Empresa + Gestor
   const [isNewCompanyOpen, setIsNewCompanyOpen] = useState(false);
@@ -49,12 +54,13 @@ export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
   });
   const [formError, setFormError] = useState('');
 
-  // Modal Adicionar Gestor em Empresa Existente
+  // Modal Adicionar Gestor ou Operador em Empresa Existente
   const [targetTenantForNewManager, setTargetTenantForNewManager] = useState(null);
   const [newManagerForm, setNewManagerForm] = useState({
     name: '',
     username: '',
-    password: ''
+    password: '',
+    role: 'company_manager'
   });
 
   // Modal Editar / Redefinir Senha de Usuário (Gestor ou Super Admin)
@@ -82,7 +88,19 @@ export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
     (t) => t.status === 'active' && (!t.expiresAt || t.expiresAt >= todayStr)
   ).length;
   const blockedOrExpiredCount = tenants.length - activeTenantsCount;
-  const managersCount = users.filter((u) => u.role === 'company_manager').length;
+  const managersCount = users.filter((u) => u.role === 'company_manager' || u.role === 'company_operator').length;
+
+  const handleSaveWhatsapp = (e) => {
+    e.preventDefault();
+    const cleaned = whatsappInput.replace(/\D/g, '');
+    updateSaasConfig({ supportWhatsapp: cleaned });
+    setWhatsappInput(cleaned);
+    showFeedback(
+      cleaned
+        ? `WhatsApp Comercial (${cleaned}) salvo para botões de renovação de assinatura.`
+        : 'Número de WhatsApp Comercial removido.'
+    );
+  };
 
   const handleCreateCompany = async (e) => {
     e.preventDefault();
@@ -156,9 +174,10 @@ export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
       setFormError(res.error);
       return;
     }
+    const roleName = newManagerForm.role === 'company_operator' ? 'Operador' : 'Gestor';
     setTargetTenantForNewManager(null);
-    setNewManagerForm({ name: '', username: '', password: '' });
-    showFeedback(`Novo gestor adicionado para "${targetTenantForNewManager.name}".`);
+    setNewManagerForm({ name: '', username: '', password: '', role: 'company_manager' });
+    showFeedback(`Novo ${roleName} adicionado para "${targetTenantForNewManager.name}".`);
   };
 
   const handleEditUserSubmit = async (e) => {
@@ -305,10 +324,10 @@ export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
           <div className="metric-cell-compact">
             <div>
               <div style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)', fontWeight: 600 }}>
-                Gestores Cadastrados
+                Logins Cadastrados
               </div>
               <div style={{ fontSize: '0.72rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
-                Senhas protegidas c/ SHA-256 + Salt
+                Gestores & Operadores (SHA-256 + Salt)
               </div>
             </div>
             <span className="mono" style={{ fontSize: '1.35rem', fontWeight: 700, color: 'var(--text-primary)' }}>
@@ -317,6 +336,65 @@ export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
           </div>
         </div>
       </section>
+
+      {/* Barra de Configuração de WhatsApp Comercial para Régua de Cobrança */}
+      <form
+        onSubmit={handleSaveWhatsapp}
+        style={{
+          background: 'var(--bg-secondary)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 'var(--radius-md)',
+          padding: '12px 16px',
+          marginBottom: '18px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          flexWrap: 'wrap',
+          gap: '12px'
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+          <div
+            style={{
+              width: '32px',
+              height: '32px',
+              borderRadius: 'var(--radius-sm)',
+              background: 'rgba(16, 185, 129, 0.12)',
+              border: '1px solid rgba(16, 185, 129, 0.28)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: 'var(--accent-emerald)',
+              flexShrink: 0
+            }}
+          >
+            <MessageCircle size={15} />
+          </div>
+          <div>
+            <div style={{ fontSize: '0.8rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+              WhatsApp Comercial (Renovação Automática de Assinatura)
+            </div>
+            <div style={{ fontSize: '0.71rem', color: 'var(--text-muted)' }}>
+              Quando a licença de um cliente vencer ou faltar 5 dias, o botão de renovação abrirá conversa direto neste número
+            </div>
+          </div>
+        </div>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+          <input
+            type="text"
+            className="form-input mono"
+            style={{ width: '210px', height: '32px', fontSize: '0.76rem' }}
+            placeholder="Ex: 5511999999999"
+            value={whatsappInput}
+            onChange={(e) => setWhatsappInput(e.target.value)}
+          />
+          <button type="submit" className="btn btn-secondary btn-sm" style={{ height: '32px' }}>
+            <Check size={13} />
+            Salvar WhatsApp
+          </button>
+        </div>
+      </form>
 
       {/* Lista de Empresas e Seus Gestores */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
@@ -491,7 +569,7 @@ export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
                   }}
                 >
                   <span style={{ fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)' }}>
-                    Logins de Gestores desta Empresa ({tenantManagers.length})
+                    Acessos desta Empresa — Gestores & Operadores ({tenantManagers.length})
                   </span>
                   <button
                     type="button"
@@ -500,79 +578,100 @@ export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
                     onClick={() => {
                       setFormError('');
                       setTargetTenantForNewManager(tenant);
-                      setNewManagerForm({ name: '', username: '', password: '' });
+                      setNewManagerForm({ name: '', username: '', password: '', role: 'company_manager' });
                     }}
                   >
                     <UserPlus size={12} />
-                    Adicionar Gestor
+                    Adicionar Login (Gestor / Operador)
                   </button>
                 </div>
 
                 {tenantManagers.length === 0 ? (
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                    Nenhum gestor vinculado. Clique em "Adicionar Gestor" para criar um login.
+                    Nenhum acesso vinculado. Clique em "Adicionar Login" para criar um Gestor ou Operador.
                   </div>
                 ) : (
                   <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(290px, 1fr))', gap: '8px' }}>
-                    {tenantManagers.map((mgr) => (
-                      <div
-                        key={mgr.id}
-                        style={{
-                          background: 'var(--bg-secondary)',
-                          border: '1px solid var(--border-subtle)',
-                          borderRadius: 'var(--radius-sm)',
-                          padding: '8px 12px',
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'space-between',
-                          gap: '8px'
-                        }}
-                      >
-                        <div style={{ minWidth: 0 }}>
-                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
-                            {mgr.name}
+                    {tenantManagers.map((mgr) => {
+                      const isOperatorRole = mgr.role === 'company_operator';
+                      return (
+                        <div
+                          key={mgr.id}
+                          style={{
+                            background: 'var(--bg-secondary)',
+                            border: '1px solid var(--border-subtle)',
+                            borderRadius: 'var(--radius-sm)',
+                            padding: '8px 12px',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            gap: '8px'
+                          }}
+                        >
+                          <div style={{ minWidth: 0 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                              <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--text-primary)' }}>
+                                {mgr.name}
+                              </span>
+                              <span
+                                className="mono"
+                                style={{
+                                  fontSize: '0.6rem',
+                                  padding: '1px 5px',
+                                  borderRadius: '3px',
+                                  fontWeight: 600,
+                                  background: isOperatorRole ? 'rgba(245, 158, 11, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                                  color: isOperatorRole ? 'var(--accent-amber)' : 'var(--accent-emerald)',
+                                  border: isOperatorRole
+                                    ? '1px solid rgba(245, 158, 11, 0.28)'
+                                    : '1px solid rgba(16, 185, 129, 0.28)'
+                                }}
+                              >
+                                {isOperatorRole ? 'OPERADOR' : 'GESTOR'}
+                              </span>
+                            </div>
+                            <div className="mono" style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginTop: '2px' }}>
+                              {mgr.username}
+                            </div>
                           </div>
-                          <div className="mono" style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>
-                            {mgr.username}
+
+                          <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                            <button
+                              type="button"
+                              className="btn btn-secondary btn-sm"
+                              style={{ padding: '3px 8px', fontSize: '0.7rem' }}
+                              onClick={() => {
+                                setFormError('');
+                                setEditingUser(mgr);
+                                setEditUserForm({
+                                  name: mgr.name,
+                                  username: mgr.username,
+                                  newPassword: ''
+                                });
+                              }}
+                              title="Alterar login ou redefinir senha deste usuário"
+                            >
+                              <KeyRound size={11} />
+                              Senha
+                            </button>
+
+                            <button
+                              type="button"
+                              className="btn btn-danger btn-icon-only btn-sm"
+                              style={{ width: '24px', height: '24px' }}
+                              onClick={() => {
+                                if (window.confirm(`Remover o acesso de "${mgr.name}"?`)) {
+                                  deleteUser(mgr.id);
+                                }
+                              }}
+                              title="Remover acesso"
+                            >
+                              <Trash2 size={11} />
+                            </button>
                           </div>
                         </div>
-
-                        <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
-                          <button
-                            type="button"
-                            className="btn btn-secondary btn-sm"
-                            style={{ padding: '3px 8px', fontSize: '0.7rem' }}
-                            onClick={() => {
-                              setFormError('');
-                              setEditingUser(mgr);
-                              setEditUserForm({
-                                name: mgr.name,
-                                username: mgr.username,
-                                newPassword: ''
-                              });
-                            }}
-                            title="Alterar login ou redefinir senha deste gestor"
-                          >
-                            <KeyRound size={11} />
-                            Senha
-                          </button>
-
-                          <button
-                            type="button"
-                            className="btn btn-danger btn-icon-only btn-sm"
-                            style={{ width: '24px', height: '24px' }}
-                            onClick={() => {
-                              if (window.confirm(`Remover o acesso do gestor "${mgr.name}"?`)) {
-                                deleteUser(mgr.id);
-                              }
-                            }}
-                            title="Remover gestor"
-                          >
-                            <Trash2 size={11} />
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -722,14 +821,14 @@ export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
         </div>
       )}
 
-      {/* MODAL 2: ADICIONAR GESTOR EM EMPRESA EXISTENTE */}
+      {/* MODAL 2: ADICIONAR GESTOR OU OPERADOR EM EMPRESA EXISTENTE */}
       {targetTenantForNewManager && (
         <div className="modal-overlay" onClick={() => setTargetTenantForNewManager(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '440px' }}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '450px' }}>
             <div className="modal-header">
               <div className="modal-title">
                 <UserPlus size={16} />
-                Novo Gestor — {targetTenantForNewManager.name}
+                Novo Acesso — {targetTenantForNewManager.name}
               </div>
               <button className="btn btn-secondary btn-icon-only btn-sm" onClick={() => setTargetTenantForNewManager(null)}>
                 <X size={15} />
@@ -743,10 +842,22 @@ export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
                   </div>
                 )}
                 <div className="form-group">
-                  <label className="form-label">Nome do Gestor:</label>
+                  <label className="form-label">Nível de Permissão (Cargo):</label>
+                  <select
+                    className="form-select"
+                    value={newManagerForm.role || 'company_manager'}
+                    onChange={(e) => setNewManagerForm({ ...newManagerForm, role: e.target.value })}
+                  >
+                    <option value="company_manager">Gestor da Empresa (Acesso Total, Metas & Exclusão)</option>
+                    <option value="company_operator">Operador / Chão de Fábrica (Apenas Lançar Pedidos e Etapas)</option>
+                  </select>
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Nome do Usuário:</label>
                   <input
                     type="text"
                     className="form-input"
+                    placeholder="Ex: Lucas (Designer / Impressor)"
                     value={newManagerForm.name}
                     onChange={(e) => setNewManagerForm({ ...newManagerForm, name: e.target.value })}
                     required
@@ -757,6 +868,7 @@ export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
                   <input
                     type="text"
                     className="form-input mono"
+                    placeholder="ex: lucas@empresa.com"
                     value={newManagerForm.username}
                     onChange={(e) => setNewManagerForm({ ...newManagerForm, username: e.target.value })}
                     required
@@ -767,6 +879,7 @@ export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
                   <input
                     type="text"
                     className="form-input mono"
+                    placeholder="Ex: Arte@2026"
                     value={newManagerForm.password}
                     onChange={(e) => setNewManagerForm({ ...newManagerForm, password: e.target.value })}
                     required
@@ -778,7 +891,7 @@ export function SuperAdminPanel({ onEnterCompanyWorkspace }) {
                   Cancelar
                 </button>
                 <button type="submit" className="btn btn-primary btn-sm">
-                  Salvar Gestor
+                  Salvar Acesso
                 </button>
               </div>
             </form>

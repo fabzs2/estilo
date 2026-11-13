@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ProductionProvider, useProduction } from './context/ProductionContext';
 import { Header } from './components/Header';
@@ -15,12 +15,13 @@ import { BackupModal } from './components/BackupModal';
 import { SupabaseModal } from './components/SupabaseModal';
 import { SectorGoalsModal } from './components/SectorGoalsModal';
 import { StageEntryModal } from './components/StageEntryModal';
-import { ShieldCheck, ArrowLeft } from 'lucide-react';
+import { ShieldCheck, ArrowLeft, AlertTriangle, MessageCircle } from 'lucide-react';
 
 export function AppContent() {
   const {
     currentUser,
     activeTenant,
+    saasConfig,
     impersonatedTenantId,
     setImpersonatedTenantId
   } = useAuth();
@@ -30,6 +31,11 @@ export function AppContent() {
   const [isSupabaseModalOpen, setIsSupabaseModalOpen] = useState(false);
 
   const {
+    isQuickEntryOpen,
+    setIsQuickEntryOpen,
+    setEditingOrder,
+    isBatchEntryOpen,
+    setIsBatchEntryOpen,
     isStageModalOpen,
     setIsStageModalOpen,
     targetOrderForStage,
@@ -40,6 +46,77 @@ export function AppContent() {
   } = useProduction();
 
   const isSuperAdmin = currentUser?.role === 'super_admin';
+
+  // Atalhos Globais de Teclado (N = Novo Pedido, B = Lançamento em Lote, Ctrl+K = Buscar na Fila)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Ctrl+K ou Cmd+K -> Ir para Fila de Pedidos e focar na busca
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setActiveTab('orders');
+        setTimeout(() => {
+          const searchInput = document.getElementById('search-orders-input');
+          if (searchInput) {
+            searchInput.focus();
+            searchInput.select();
+          }
+        }, 40);
+        return;
+      }
+
+      // Ignora teclas simples se estiver digitando em campos de texto ou se algum modal estiver aberto
+      const tag = (e.target?.tagName || '').toUpperCase();
+      const isEditable =
+        tag === 'INPUT' ||
+        tag === 'TEXTAREA' ||
+        tag === 'SELECT' ||
+        e.target?.isContentEditable;
+      if (isEditable || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (isQuickEntryOpen || isBatchEntryOpen || isStageModalOpen || isBackupModalOpen || isSupabaseModalOpen) return;
+
+      if (e.key.toLowerCase() === 'n') {
+        e.preventDefault();
+        setEditingOrder(null);
+        setIsQuickEntryOpen(true);
+      } else if (e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        setIsBatchEntryOpen(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [
+    isQuickEntryOpen,
+    isBatchEntryOpen,
+    isStageModalOpen,
+    isBackupModalOpen,
+    isSupabaseModalOpen,
+    setEditingOrder,
+    setIsQuickEntryOpen,
+    setIsBatchEntryOpen
+  ]);
+
+  // Cálculo de Dias Restantes para Aviso Automático de Vencimento de Licença (<= 5 dias)
+  const daysUntilExpiry = (() => {
+    if (!activeTenant?.expiresAt) return null;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const exp = new Date(activeTenant.expiresAt + 'T00:00:00');
+    const diffMs = exp.getTime() - today.getTime();
+    return Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+  })();
+
+  const showLicenseWarning =
+    !isSuperAdmin && daysUntilExpiry !== null && daysUntilExpiry >= 0 && daysUntilExpiry <= 5;
+
+  const buildWhatsappRenewLink = () => {
+    const rawPhone = (saasConfig?.supportWhatsapp || '').replace(/\D/g, '');
+    const msg = encodeURIComponent(
+      `Olá! Gostaria de renovar a licença do sistema KromaOPS da empresa *${activeTenant?.name || 'Minha Empresa'}* (vencimento: ${activeTenant?.expiresAt?.split('-').reverse().join('/')}).`
+    );
+    return rawPhone ? `https://wa.me/${rawPhone}?text=${msg}` : `https://wa.me/?text=${msg}`;
+  };
 
   return (
     <div className="app-shell">
@@ -53,6 +130,58 @@ export function AppContent() {
 
       {/* Área de Trabalho Principal */}
       <div className="app-workspace">
+        {/* Régua Automática de Cobrança: Aviso quando faltam <= 5 dias para vencer a licença */}
+        {showLicenseWarning && (
+          <div
+            style={{
+              background: 'rgba(245, 158, 11, 0.12)',
+              borderBottom: '1px solid rgba(245, 158, 11, 0.3)',
+              padding: '8px 28px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '12px',
+              fontSize: '0.76rem'
+            }}
+          >
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', color: 'var(--text-primary)' }}>
+              <AlertTriangle size={14} color="var(--accent-amber)" />
+              <span>
+                {daysUntilExpiry === 0 ? (
+                  <>A licença de uso da empresa <strong>{activeTenant?.name}</strong> vence <strong>HOJE</strong>.</>
+                ) : (
+                  <>
+                    A licença de uso da empresa <strong>{activeTenant?.name}</strong> vence em{' '}
+                    <strong>{daysUntilExpiry} dia(s)</strong> ({activeTenant?.expiresAt?.split('-').reverse().join('/')}).
+                  </>
+                )}{' '}
+                Renove antecipadamente para manter o acesso ininterrupto.
+              </span>
+            </span>
+
+            <a
+              href={buildWhatsappRenewLink()}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '6px',
+                background: '#10b981',
+                color: '#052e16',
+                fontWeight: 700,
+                fontSize: '0.72rem',
+                padding: '4px 10px',
+                borderRadius: '4px',
+                textDecoration: 'none'
+              }}
+            >
+              <MessageCircle size={13} />
+              Renovar no WhatsApp
+            </a>
+          </div>
+        )}
         {/* Barra Superior de Inspecionar Empresa (Quando Super Admin entra em uma empresa cliente) */}
         {isSuperAdmin && impersonatedTenantId && activeTab !== 'super_admin' && (
           <div

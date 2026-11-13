@@ -64,6 +64,9 @@ export function AuthProvider({ children }) {
   const [tenants, setTenants] = useState([DEFAULT_TENANT]);
   const [users, setUsers] = useState([]);
   const [hasCustomizedSuperAdmin, setHasCustomizedSuperAdmin] = useState(false);
+  const [saasConfig, setSaasConfig] = useState({
+    supportWhatsapp: ''
+  });
 
   // Sessão ativa
   const [currentUser, setCurrentUser] = useState(null);
@@ -82,13 +85,14 @@ export function AuthProvider({ children }) {
 
   // Sincroniza registro de empresas e gestores (apenas hashes/salts) no Supabase
   const persistAuthRegistryToSupabase = useCallback(
-    async (nextTenants, nextUsers, nextCustomizedFlag) => {
+    async (nextTenants, nextUsers, nextCustomizedFlag, nextSaasConfig) => {
       if (!isSupabaseActive || !supabase) return;
       try {
         const payload = {
           tenants: nextTenants,
           users: nextUsers,
           hasCustomizedSuperAdmin: nextCustomizedFlag,
+          saasConfig: nextSaasConfig || saasConfig,
           updatedAt: new Date().toISOString()
         };
         await supabase.from('production_entries').upsert(
@@ -111,26 +115,27 @@ export function AuthProvider({ children }) {
         console.error('Erro ao sincronizar registro de acessos no Supabase:', err);
       }
     },
-    [isSupabaseActive]
+    [isSupabaseActive, saasConfig]
   );
 
   const saveAuthRegistryLocal = useCallback(
-    (nextTenants, nextUsers, nextCustomizedFlag) => {
+    (nextTenants, nextUsers, nextCustomizedFlag, nextSaasConfig) => {
       try {
         localStorage.setItem(
           AUTH_STORAGE_KEY,
           JSON.stringify({
             tenants: nextTenants,
             users: nextUsers,
-            hasCustomizedSuperAdmin: nextCustomizedFlag
+            hasCustomizedSuperAdmin: nextCustomizedFlag,
+            saasConfig: nextSaasConfig || saasConfig
           })
         );
       } catch {
         // ignore storage quota errors
       }
-      persistAuthRegistryToSupabase(nextTenants, nextUsers, nextCustomizedFlag);
+      persistAuthRegistryToSupabase(nextTenants, nextUsers, nextCustomizedFlag, nextSaasConfig || saasConfig);
     },
-    [persistAuthRegistryToSupabase]
+    [persistAuthRegistryToSupabase, saasConfig]
   );
 
   // Inicialização: garante criação criptográfica do Super Admin e Gestor Padrão
@@ -141,6 +146,7 @@ export function AuthProvider({ children }) {
       let loadedTenants = [DEFAULT_TENANT];
       let loadedUsers = [];
       let customizedFlag = false;
+      let loadedSaasConfig = { supportWhatsapp: '' };
 
       // 1. Tenta carregar do localStorage
       try {
@@ -152,6 +158,9 @@ export function AuthProvider({ children }) {
           }
           if (Array.isArray(parsed.users) && parsed.users.length > 0) {
             loadedUsers = parsed.users;
+          }
+          if (parsed.saasConfig) {
+            loadedSaasConfig = { ...loadedSaasConfig, ...parsed.saasConfig };
           }
           customizedFlag = Boolean(parsed.hasCustomizedSuperAdmin);
         }
@@ -175,6 +184,9 @@ export function AuthProvider({ children }) {
             }
             if (Array.isArray(remoteParsed.users) && remoteParsed.users.length > 0) {
               loadedUsers = remoteParsed.users;
+            }
+            if (remoteParsed.saasConfig) {
+              loadedSaasConfig = { ...loadedSaasConfig, ...remoteParsed.saasConfig };
             }
             if (typeof remoteParsed.hasCustomizedSuperAdmin === 'boolean') {
               customizedFlag = remoteParsed.hasCustomizedSuperAdmin;
@@ -270,6 +282,7 @@ export function AuthProvider({ children }) {
       setTenants(loadedTenants);
       setUsers(loadedUsers);
       setHasCustomizedSuperAdmin(customizedFlag);
+      setSaasConfig(loadedSaasConfig);
 
       // 4. Restaura sessão ativa se válida e dentro do tempo limite
       try {
@@ -280,8 +293,8 @@ export function AuthProvider({ children }) {
           if (parsedSession.userId && now - (parsedSession.lastActivity || 0) < INACTIVITY_LIMIT_MS) {
             const foundUser = loadedUsers.find((u) => u.id === parsedSession.userId && u.active !== false);
             if (foundUser) {
-              // Se for gestor de empresa, confere se a empresa continua ativa
-              if (foundUser.role === 'company_manager') {
+              // Se for gestor ou operador de empresa, confere se a empresa continua ativa
+              if (foundUser.role === 'company_manager' || foundUser.role === 'company_operator') {
                 const userTenant = loadedTenants.find((t) => t.id === foundUser.tenantId);
                 const todayStr = new Date().toISOString().slice(0, 10);
                 const isExpired = userTenant?.expiresAt && userTenant.expiresAt < todayStr;
@@ -420,8 +433,8 @@ export function AuthProvider({ children }) {
       };
     }
 
-    // Se for Gestor de Empresa, valida se a Empresa está ativa e dentro da validade
-    if (user.role === 'company_manager') {
+    // Se for Gestor ou Operador de Empresa, valida se a Empresa está ativa e dentro da validade
+    if (user.role === 'company_manager' || user.role === 'company_operator') {
       const tenant = tenants.find((t) => t.id === user.tenantId);
       if (!tenant) {
         return { ok: false, error: 'Empresa vinculada não encontrada.' };
@@ -429,6 +442,8 @@ export function AuthProvider({ children }) {
       if (tenant.status === 'suspended') {
         return {
           ok: false,
+          isBillingBlock: true,
+          tenantName: tenant.name,
           error: `O acesso da empresa "${tenant.name}" está suspenso. Entre em contato com o suporte KromaOPS para regularização.`
         };
       }
@@ -436,6 +451,8 @@ export function AuthProvider({ children }) {
       if (tenant.expiresAt && tenant.expiresAt < todayStr) {
         return {
           ok: false,
+          isBillingBlock: true,
+          tenantName: tenant.name,
           error: `A licença da empresa "${tenant.name}" expirou em ${tenant.expiresAt.split('-').reverse().join('/')}. Contate o suporte KromaOPS para renovar.`
         };
       }
@@ -546,7 +563,7 @@ export function AuthProvider({ children }) {
     return { ok: true };
   };
 
-  const addManagerToTenant = async ({ tenantId, name, username, password }) => {
+  const addManagerToTenant = async ({ tenantId, name, username, password, role = 'company_manager' }) => {
     const cleanUsername = (username || '').trim().toLowerCase();
     if (users.some((u) => u.username.toLowerCase() === cleanUsername)) {
       return { ok: false, error: 'Este login/e-mail já está em uso.' };
@@ -558,7 +575,7 @@ export function AuthProvider({ children }) {
       id: `usr_${Date.now()}`,
       name: name.trim(),
       username: cleanUsername,
-      role: 'company_manager',
+      role: role === 'company_operator' ? 'company_operator' : 'company_manager',
       tenantId,
       salt,
       passwordHash,
@@ -570,6 +587,12 @@ export function AuthProvider({ children }) {
     setUsers(nextUsers);
     saveAuthRegistryLocal(tenants, nextUsers, hasCustomizedSuperAdmin);
     return { ok: true, user: newUser };
+  };
+
+  const updateSaasConfig = (partial) => {
+    const nextConfig = { ...saasConfig, ...partial };
+    setSaasConfig(nextConfig);
+    saveAuthRegistryLocal(tenants, users, hasCustomizedSuperAdmin, nextConfig);
   };
 
   const updateUserCredentials = async (userId, { name, username, newPassword, active }) => {
@@ -626,9 +649,9 @@ export function AuthProvider({ children }) {
     return { ok: true };
   };
 
-  // Empresa ativa no contexto atual (para o Gestor é a empresa dele; para o Super Admin é a empresa inspecionada ou a padrão)
+  // Empresa ativa no contexto atual (para Gestor ou Operador é a empresa dele; para o Super Admin é a empresa inspecionada ou a padrão)
   const activeTenantId =
-    currentUser?.role === 'company_manager'
+    currentUser?.role === 'company_manager' || currentUser?.role === 'company_operator'
       ? currentUser.tenantId
       : impersonatedTenantId || tenants[0]?.id || 'tenant_default';
 
@@ -646,6 +669,8 @@ export function AuthProvider({ children }) {
         impersonatedTenantId,
         setImpersonatedTenantId,
         hasCustomizedSuperAdmin,
+        saasConfig,
+        updateSaasConfig,
         lockoutState,
         login,
         logout,
