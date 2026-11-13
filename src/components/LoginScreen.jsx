@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { KromaLogo } from './KromaLogo';
-import { Lock, User, Eye, EyeOff, ShieldCheck, AlertCircle, ArrowRight } from 'lucide-react';
+import { Lock, User, Eye, EyeOff, AlertCircle, ArrowRight } from 'lucide-react';
 
 export function LoginScreen() {
-  const { login, lockoutState, hasCustomizedSuperAdmin } = useAuth();
+  const { login, lockoutState } = useAuth();
 
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -240,84 +240,13 @@ export function LoginScreen() {
           </button>
         </form>
 
-        {/* Aviso de 1º Acesso (some assim que o Super Admin troca a senha padrão) */}
-        {!hasCustomizedSuperAdmin && (
-          <div
-            style={{
-              marginTop: '20px',
-              paddingTop: '14px',
-              borderTop: '1px solid #1f1f23',
-              fontSize: '0.71rem',
-              color: '#a1a1aa'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontWeight: 600, color: '#fafafa', marginBottom: '6px' }}>
-              <ShieldCheck size={13} color="#3b82f6" />
-              Credenciais de 1º Acesso (Altere após entrar):
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
-              <button
-                type="button"
-                onClick={() => {
-                  setUsername('admin@kromaops.com');
-                  setPassword('Kroma@2026');
-                }}
-                style={{
-                  background: '#18181b',
-                  border: '1px solid #27272a',
-                  borderRadius: '5px',
-                  padding: '6px 9px',
-                  color: '#d4d4d8',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontSize: '0.7rem'
-                }}
-              >
-                <span>
-                  <strong style={{ color: '#3b82f6' }}>Super Admin (Dono):</strong>{' '}
-                  <span className="mono">admin@kromaops.com</span>
-                </span>
-                <span className="mono" style={{ color: '#71717a' }}>Kroma@2026</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  setUsername('estilouniformes22@gmail.com');
-                  setPassword('estilo@2026');
-                }}
-                style={{
-                  background: '#18181b',
-                  border: '1px solid #27272a',
-                  borderRadius: '5px',
-                  padding: '6px 9px',
-                  color: '#d4d4d8',
-                  textAlign: 'left',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                  fontSize: '0.7rem'
-                }}
-              >
-                <span>
-                  <strong style={{ color: '#10b981' }}>Gestor Matriz:</strong>{' '}
-                  <span className="mono">estilouniformes22@gmail.com</span>
-                </span>
-                <span className="mono" style={{ color: '#71717a' }}>estilo@2026</span>
-              </button>
-            </div>
-          </div>
-        )}
-
         {/* Rodapé de Segurança */}
         <div
           className="mono"
           style={{
-            marginTop: '16px',
+            marginTop: '18px',
+            paddingTop: '14px',
+            borderTop: '1px solid #1f1f23',
             textAlign: 'center',
             fontSize: '0.64rem',
             color: '#52525b',
@@ -328,7 +257,7 @@ export function LoginScreen() {
           }}
         >
           <Lock size={10} />
-          SHA-256 SALTED HASH • ISOLAMENTO MULTI-EMPRESA
+          ACESSO RESTRITO • AMBIENTE CRIPTOGRAFADO
         </div>
       </div>
     </div>
