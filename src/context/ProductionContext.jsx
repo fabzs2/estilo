@@ -29,15 +29,29 @@ export function useProduction() {
   return context;
 }
 
-const STORAGE_KEYS = {
-  ORDERS: 'designflow_orders_v3',
-  ENTRIES: 'designflow_entries_v2', // Fallback e compatibilidade
-  DESIGNERS: 'designflow_designers_v2',
-  WORKING_DAYS: 'designflow_working_days_config'
-};
+function getTenantStorageKeys(tenantId) {
+  if (!tenantId || tenantId === 'tenant_default') {
+    return {
+      ORDERS: 'designflow_orders_v3',
+      ENTRIES: 'designflow_entries_v2',
+      DESIGNERS: 'designflow_designers_v2',
+      WORKING_DAYS: 'designflow_working_days_config',
+      SECTOR_GOALS: 'designflow_sector_goals',
+      SYS_CONFIG_ID: '__designflow_system_config__'
+    };
+  }
+  return {
+    ORDERS: `kromaops_${tenantId}_orders_v3`,
+    ENTRIES: `kromaops_${tenantId}_entries_v2`,
+    DESIGNERS: `kromaops_${tenantId}_designers_v2`,
+    WORKING_DAYS: `kromaops_${tenantId}_working_days_config`,
+    SECTOR_GOALS: `kromaops_${tenantId}_sector_goals`,
+    SYS_CONFIG_ID: `__kromaops_config_${tenantId}__`
+  };
+}
 
-const SYS_CONFIG_ENTRY_ID = '__designflow_system_config__';
 const SYS_CONFIG_STAGE = '__sys_config__';
+const SYS_AUTH_STAGE = '__sys_auth__';
 
 // Identifica o status da fila de produção de um pedido
 export function getOrderQueueStatus(order) {
@@ -59,8 +73,14 @@ function groupEntriesIntoOrders(flatEntries) {
   const orderMap = new Map();
 
   flatEntries.forEach((entry, idx) => {
-    // Ignora linha reservada de configuração do sistema
-    if (entry.id === SYS_CONFIG_ENTRY_ID || entry.stage === SYS_CONFIG_STAGE || entry.orderNumber === '__SYS_CONFIG__') {
+    // Ignora linhas reservadas de configuração do sistema e autenticação SaaS
+    if (
+      entry.stage === SYS_CONFIG_STAGE ||
+      entry.stage === SYS_AUTH_STAGE ||
+      entry.orderNumber === '__SYS_CONFIG__' ||
+      entry.orderNumber === '__SYS_AUTH__' ||
+      (entry.id && entry.id.startsWith('__'))
+    ) {
       return;
     }
 
@@ -114,7 +134,11 @@ function groupEntriesIntoOrders(flatEntries) {
   return Array.from(orderMap.values());
 }
 
-export function ProductionProvider({ children }) {
+export function ProductionProvider({ children, tenantId = 'tenant_default', tenantInfo = null }) {
+  const STORAGE_KEYS = useMemo(() => getTenantStorageKeys(tenantId), [tenantId]);
+  const SYS_CONFIG_ENTRY_ID = STORAGE_KEYS.SYS_CONFIG_ID;
+  const isDefaultTenant = !tenantId || tenantId === 'tenant_default';
+
   const [isSupabaseActive] = useState(() => isSupabaseConfigured());
   const [isLoadingDB, setIsLoadingDB] = useState(false);
   const [toastNotice, setToastNotice] = useState(null);
@@ -149,9 +173,10 @@ export function ProductionProvider({ children }) {
   const [designers, setDesigners] = useState(() => {
     try {
       const saved = localStorage.getItem(STORAGE_KEYS.DESIGNERS);
-      return saved ? JSON.parse(saved) : INITIAL_DESIGNERS;
+      if (saved) return JSON.parse(saved);
+      return isDefaultTenant ? INITIAL_DESIGNERS : [];
     } catch {
-      return INITIAL_DESIGNERS;
+      return isDefaultTenant ? INITIAL_DESIGNERS : [];
     }
   });
 
@@ -161,26 +186,28 @@ export function ProductionProvider({ children }) {
       const savedOrders = localStorage.getItem(STORAGE_KEYS.ORDERS);
       if (savedOrders) {
         const parsed = JSON.parse(savedOrders);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       }
-      // Se não havia v3, verifica se havia lançamentos no v2 e migra automaticamente
-      const savedEntries = localStorage.getItem(STORAGE_KEYS.ENTRIES);
-      if (savedEntries) {
-        const parsedEntries = JSON.parse(savedEntries);
-        if (Array.isArray(parsedEntries) && parsedEntries.length > 0) {
-          return groupEntriesIntoOrders(parsedEntries);
+      if (isDefaultTenant) {
+        const savedEntries = localStorage.getItem(STORAGE_KEYS.ENTRIES);
+        if (savedEntries) {
+          const parsedEntries = JSON.parse(savedEntries);
+          if (Array.isArray(parsedEntries) && parsedEntries.length > 0) {
+            return groupEntriesIntoOrders(parsedEntries);
+          }
         }
+        return INITIAL_ORDERS;
       }
-      return INITIAL_ORDERS;
+      return [];
     } catch {
-      return INITIAL_ORDERS;
+      return isDefaultTenant ? INITIAL_ORDERS : [];
     }
   });
 
   // 3. Metas Globais do Setor
   const [sectorGoals, setSectorGoals] = useState(() => {
     try {
-      const saved = localStorage.getItem('designflow_sector_goals');
+      const saved = localStorage.getItem(STORAGE_KEYS.SECTOR_GOALS);
       return saved ? JSON.parse(saved) : null;
     } catch {
       return null;
@@ -191,8 +218,8 @@ export function ProductionProvider({ children }) {
   const [workingDaysConfig, setWorkingDaysConfig] = useState(() => {
     const defaultHolidays = getBrazilianHolidays(new Date().getFullYear()).map((h) => h.date);
     const defaultConfig = {
-      companyName: 'Estamparia & Uniformes',
-      companySub: 'Setor de Arte & Impressão',
+      companyName: tenantInfo?.name || 'Estamparia & Uniformes',
+      companySub: tenantInfo?.sector || 'Setor de Arte & Impressão',
       mode: 'calendar', // 'calendar' (Dias Úteis Reais Seg-Sex - Feriados) | 'registered' (Dias com Lançamento) | 'manual' (Fixo)
       includeSaturday: false,
       holidays: defaultHolidays,
@@ -315,7 +342,7 @@ export function ProductionProvider({ children }) {
   const updateSectorGoals = (newGoals) => {
     setSectorGoals(newGoals);
     try {
-      localStorage.setItem('designflow_sector_goals', JSON.stringify(newGoals));
+      localStorage.setItem(STORAGE_KEYS.SECTOR_GOALS, JSON.stringify(newGoals));
     } catch {
       // Ignora
     }
@@ -325,7 +352,7 @@ export function ProductionProvider({ children }) {
   const resetSectorGoals = () => {
     setSectorGoals(null);
     try {
-      localStorage.removeItem('designflow_sector_goals');
+      localStorage.removeItem(STORAGE_KEYS.SECTOR_GOALS);
     } catch {
       // Ignora
     }
@@ -335,7 +362,7 @@ export function ProductionProvider({ children }) {
   // Aplica configurações vindas do registro especial do Supabase
   const applyRemoteConfigIfPresent = useCallback((rawEntries) => {
     const sysRow = rawEntries.find(
-      (r) => r.id === SYS_CONFIG_ENTRY_ID || r.stage === SYS_CONFIG_STAGE || r.order_number === '__SYS_CONFIG__'
+      (r) => r.id === SYS_CONFIG_ENTRY_ID || (isDefaultTenant && (r.stage === SYS_CONFIG_STAGE || r.order_number === '__SYS_CONFIG__'))
     );
     if (sysRow && sysRow.notes) {
       try {
@@ -355,9 +382,9 @@ export function ProductionProvider({ children }) {
           setSectorGoals(parsed.sectorGoals);
           try {
             if (parsed.sectorGoals) {
-              localStorage.setItem('designflow_sector_goals', JSON.stringify(parsed.sectorGoals));
+              localStorage.setItem(STORAGE_KEYS.SECTOR_GOALS, JSON.stringify(parsed.sectorGoals));
             } else {
-              localStorage.removeItem('designflow_sector_goals');
+              localStorage.removeItem(STORAGE_KEYS.SECTOR_GOALS);
             }
           } catch {
             // Ignora
@@ -367,11 +394,11 @@ export function ProductionProvider({ children }) {
         // Ignora caso não seja JSON válido
       }
     }
-  }, []);
+  }, [SYS_CONFIG_ENTRY_ID, STORAGE_KEYS, isDefaultTenant]);
 
   // Carregar dados remotos do Supabase se configurado
   useEffect(() => {
-    if (!isSupabaseActive || !supabase) return;
+    if (!isSupabaseActive || !supabase || !isDefaultTenant) return;
 
     async function loadFromSupabase() {
       setIsLoadingDB(true);

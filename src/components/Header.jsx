@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useProduction } from '../context/ProductionContext';
+import { useAuth } from '../context/AuthContext';
+import { KromaLogo } from './KromaLogo';
 import {
   BarChart3,
   ListFilter,
@@ -14,7 +16,11 @@ import {
   Sun,
   Moon,
   Building2,
-  Edit3
+  Edit3,
+  ShieldCheck,
+  LogOut,
+  KeyRound,
+  X
 } from 'lucide-react';
 
 export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }) {
@@ -31,6 +37,14 @@ export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }
     workingDaysConfig
   } = useProduction();
 
+  const {
+    currentUser,
+    tenants,
+    activeTenant,
+    logout,
+    updateUserCredentials
+  } = useAuth();
+
   const [theme, setTheme] = useState(() => {
     try {
       return localStorage.getItem('designflow_theme') || 'dark';
@@ -38,6 +52,11 @@ export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }
       return 'dark';
     }
   });
+
+  // Modal de troca de senha do próprio usuário logado
+  const [isPasswordModalOpen, setIsPasswordModalOpen] = useState(false);
+  const [pwdForm, setPwdForm] = useState({ newPassword: '', confirmPassword: '' });
+  const [pwdMessage, setPwdMessage] = useState({ type: '', text: '' });
 
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
@@ -52,65 +71,270 @@ export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }
     setTheme((prev) => (prev === 'dark' ? 'light' : 'dark'));
   };
 
+  const handlePasswordChangeSubmit = async (e) => {
+    e.preventDefault();
+    setPwdMessage({ type: '', text: '' });
+    if (pwdForm.newPassword.trim().length < 6) {
+      setPwdMessage({ type: 'error', text: 'A nova senha deve ter no mínimo 6 caracteres.' });
+      return;
+    }
+    if (pwdForm.newPassword !== pwdForm.confirmPassword) {
+      setPwdMessage({ type: 'error', text: 'A confirmação de senha não confere.' });
+      return;
+    }
+    const res = await updateUserCredentials(currentUser.id, {
+      newPassword: pwdForm.newPassword
+    });
+    if (!res.ok) {
+      setPwdMessage({ type: 'error', text: res.error });
+      return;
+    }
+    setPwdForm({ newPassword: '', confirmPassword: '' });
+    setPwdMessage({ type: 'success', text: 'Senha alterada com sucesso!' });
+    setTimeout(() => {
+      setIsPasswordModalOpen(false);
+      setPwdMessage({ type: '', text: '' });
+    }, 1200);
+  };
+
+  const isSuperAdmin = currentUser?.role === 'super_admin';
   const activeDesignersCount = designers.filter((d) => d.active !== false).length;
-  const companyName = workingDaysConfig?.companyName || 'Estamparia & Uniformes';
-  const companySub = workingDaysConfig?.companySub || 'Setor de Arte & Impressão';
+  const companyName = workingDaysConfig?.companyName || activeTenant?.name || 'Estamparia & Uniformes';
+  const companySub = workingDaysConfig?.companySub || activeTenant?.sector || 'Setor de Arte & Impressão';
 
   return (
-    <aside className="app-sidebar">
-      <div className="sidebar-top">
-        {/* Identidade da Plataforma KromaOPS + Empresa Cliente (White-Label) */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-          <div className="sidebar-brand">
-            <div className="brand-mark">KR</div>
-            <div className="brand-text-wrap">
-              <div className="brand-name">
-                Kroma<span style={{ color: 'var(--accent-blue)', fontWeight: 700 }}>OPS</span>
-                <span
-                  className="mono"
-                  style={{
-                    fontSize: '0.58rem',
-                    padding: '1px 4px',
-                    borderRadius: '3px',
-                    background: 'var(--bg-surface)',
-                    border: '1px solid var(--border-subtle)',
-                    color: 'var(--text-muted)',
-                    fontWeight: 600
-                  }}
-                >
-                  PRO
-                </span>
+    <>
+      <aside className="app-sidebar">
+        <div className="sidebar-top">
+          {/* Identidade da Plataforma KromaOPS + Empresa Cliente (White-Label) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+            <div className="sidebar-brand">
+              <KromaLogo size={32} />
+              <div className="brand-text-wrap">
+                <div className="brand-name">
+                  Kroma<span style={{ color: 'var(--accent-blue)', fontWeight: 700 }}>OPS</span>
+                  <span
+                    className="mono"
+                    style={{
+                      fontSize: '0.58rem',
+                      padding: '1px 4px',
+                      borderRadius: '3px',
+                      background: 'var(--bg-surface)',
+                      border: '1px solid var(--border-subtle)',
+                      color: 'var(--text-muted)',
+                      fontWeight: 600
+                    }}
+                  >
+                    PRO
+                  </span>
+                </div>
+                <div className="brand-sub">Production OS</div>
               </div>
-              <div className="brand-sub">Production OS</div>
             </div>
+
+            {/* Card White-Label da Empresa / Fábrica Cliente */}
+            <button
+              type="button"
+              onClick={() => setIsSectorGoalsModalOpen(true)}
+              title="Clique para personalizar os dados da unidade operacional"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '8px',
+                width: '100%',
+                padding: '7px 10px',
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                cursor: 'pointer',
+                textAlign: 'left',
+                transition: 'border-color var(--trans-fast)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+                <Building2 size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+                <div style={{ minWidth: 0 }}>
+                  <div
+                    style={{
+                      fontSize: '0.76rem',
+                      fontWeight: 600,
+                      color: 'var(--text-primary)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                  >
+                    {companyName}
+                  </div>
+                  <div
+                    style={{
+                      fontSize: '0.66rem',
+                      color: 'var(--text-muted)',
+                      whiteSpace: 'nowrap',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis'
+                    }}
+                  >
+                    {companySub}
+                  </div>
+                </div>
+              </div>
+              <Edit3 size={11} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+            </button>
           </div>
 
-          {/* Card White-Label da Empresa / Fábrica Cliente */}
-          <button
-            type="button"
-            onClick={() => setIsSectorGoalsModalOpen(true)}
-            title="Clique para personalizar o nome da empresa/fábrica cliente (Modo White-Label)"
-            style={{
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '8px',
-              width: '100%',
-              padding: '7px 10px',
-              background: 'var(--bg-surface)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-md)',
-              cursor: 'pointer',
-              textAlign: 'left',
-              transition: 'border-color var(--trans-fast)'
-            }}
-          >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
-              <Building2 size={14} color="var(--text-muted)" style={{ flexShrink: 0 }} />
+          {/* Ações de Lançamento */}
+          <div className="sidebar-quick-actions">
+            <button
+              id="btn-quick-entry"
+              className="btn btn-primary"
+              style={{ width: '100%', justifyContent: 'center', padding: '8px 12px' }}
+              onClick={() => {
+                setEditingOrder(null);
+                setIsQuickEntryOpen(true);
+              }}
+            >
+              <Plus size={15} strokeWidth={2.4} />
+              Lançar Pedido
+            </button>
+
+            <button
+              id="btn-batch-entry"
+              className="btn btn-secondary btn-sm"
+              style={{ width: '100%', justifyContent: 'center' }}
+              onClick={() => setIsBatchEntryOpen(true)}
+            >
+              <Layers size={13} />
+              Lançamento em Lote
+            </button>
+          </div>
+
+          {/* Exclusivo Super Admin: Central SaaS */}
+          {isSuperAdmin && (
+            <div>
+              <div className="sidebar-section-label">Administração SaaS</div>
+              <nav className="sidebar-nav">
+                <button
+                  id="tab-super-admin"
+                  className={`sidebar-nav-item ${activeTab === 'super_admin' ? 'active' : ''}`}
+                  onClick={() => setActiveTab('super_admin')}
+                  style={{
+                    borderColor: activeTab === 'super_admin' ? 'var(--accent-blue)' : 'transparent'
+                  }}
+                >
+                  <span className="sidebar-nav-item-left">
+                    <ShieldCheck size={15} color="var(--accent-blue)" />
+                    Empresas & Acessos
+                  </span>
+                  <span className="sidebar-counter">{tenants.length}</span>
+                </button>
+              </nav>
+            </div>
+          )}
+
+          {/* Navegação Principal */}
+          <div>
+            <div className="sidebar-section-label">Operação</div>
+            <nav className="sidebar-nav">
+              <button
+                id="tab-dashboard"
+                className={`sidebar-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
+                onClick={() => setActiveTab('dashboard')}
+              >
+                <span className="sidebar-nav-item-left">
+                  <BarChart3 size={15} />
+                  Visão Geral
+                </span>
+              </button>
+
+              <button
+                id="tab-orders"
+                className={`sidebar-nav-item ${activeTab === 'orders' ? 'active' : ''}`}
+                onClick={() => setActiveTab('orders')}
+              >
+                <span className="sidebar-nav-item-left">
+                  <ListFilter size={15} />
+                  Fila de Pedidos
+                </span>
+                <span className="sidebar-counter">{metrics.totalOrders}</span>
+              </button>
+
+              <button
+                id="tab-team"
+                className={`sidebar-nav-item ${activeTab === 'team' ? 'active' : ''}`}
+                onClick={() => setActiveTab('team')}
+              >
+                <span className="sidebar-nav-item-left">
+                  <Users size={15} />
+                  Equipe & Metas
+                </span>
+                <span className="sidebar-counter">{activeDesignersCount}</span>
+              </button>
+            </nav>
+          </div>
+
+          {/* Ferramentas e Gestão */}
+          <div>
+            <div className="sidebar-section-label">Gestão</div>
+            <nav className="sidebar-nav">
+              <button
+                id="btn-sidebar-goals"
+                className="sidebar-nav-item"
+                onClick={() => setIsSectorGoalsModalOpen(true)}
+              >
+                <span className="sidebar-nav-item-left">
+                  <SlidersHorizontal size={15} />
+                  Empresa, Dias & Metas
+                </span>
+                <span className="sidebar-counter">{metrics.workingDaysCount}d</span>
+              </button>
+
+              <button
+                id="btn-executive-report"
+                className="sidebar-nav-item"
+                onClick={() => setIsReportOpen(true)}
+              >
+                <span className="sidebar-nav-item-left">
+                  <Printer size={15} />
+                  Relatório Executivo
+                </span>
+              </button>
+
+              <button
+                id="btn-settings-data"
+                className="sidebar-nav-item"
+                onClick={onOpenBackup}
+              >
+                <span className="sidebar-nav-item-left">
+                  <Download size={15} />
+                  Backup & CSV
+                </span>
+              </button>
+            </nav>
+          </div>
+        </div>
+
+        {/* Rodapé da Sidebar: Usuário Logado, Banco, Tema e Logout */}
+        <div className="sidebar-footer">
+          {/* Perfil Logado */}
+          {currentUser && (
+            <div
+              style={{
+                background: 'var(--bg-surface)',
+                border: '1px solid var(--border-subtle)',
+                borderRadius: 'var(--radius-md)',
+                padding: '7px 9px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                gap: '6px'
+              }}
+            >
               <div style={{ minWidth: 0 }}>
                 <div
                   style={{
-                    fontSize: '0.76rem',
+                    fontSize: '0.74rem',
                     fontWeight: 600,
                     color: 'var(--text-primary)',
                     whiteSpace: 'nowrap',
@@ -118,183 +342,160 @@ export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }
                     textOverflow: 'ellipsis'
                   }}
                 >
-                  {companyName}
+                  {currentUser.name}
                 </div>
-                <div
-                  style={{
-                    fontSize: '0.66rem',
-                    color: 'var(--text-muted)',
-                    whiteSpace: 'nowrap',
-                    overflow: 'hidden',
-                    textOverflow: 'ellipsis'
-                  }}
-                >
-                  {companySub}
+                <div className="mono" style={{ fontSize: '0.62rem', color: isSuperAdmin ? 'var(--accent-blue)' : 'var(--accent-emerald)' }}>
+                  {isSuperAdmin ? 'SUPER ADMIN' : 'GESTOR'}
                 </div>
               </div>
+
+              <div style={{ display: 'flex', gap: '4px', flexShrink: 0 }}>
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-icon-only btn-sm"
+                  style={{ width: '24px', height: '24px' }}
+                  onClick={() => {
+                    setPwdForm({ newPassword: '', confirmPassword: '' });
+                    setPwdMessage({ type: '', text: '' });
+                    setIsPasswordModalOpen(true);
+                  }}
+                  title="Alterar minha senha"
+                >
+                  <KeyRound size={12} />
+                </button>
+                <button
+                  type="button"
+                  className="btn btn-danger btn-icon-only btn-sm"
+                  style={{ width: '24px', height: '24px' }}
+                  onClick={logout}
+                  title="Sair / Bloquear sessão"
+                >
+                  <LogOut size={12} />
+                </button>
+              </div>
             </div>
-            <Edit3 size={11} color="var(--text-muted)" style={{ flexShrink: 0 }} />
-          </button>
+          )}
+
+          {/* Conexão Supabase (Visível para Super Admin) */}
+          {isSuperAdmin && (
+            <button
+              id="btn-supabase-status"
+              className="sidebar-status-btn"
+              onClick={onOpenSupabase}
+              title={isSupabaseActive ? 'Conectado ao Supabase (Nuvem)' : 'Clique para configurar banco em nuvem'}
+            >
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
+                <span
+                  className="status-dot"
+                  style={{
+                    background: isSupabaseActive ? 'var(--accent-emerald)' : 'var(--text-muted)'
+                  }}
+                />
+                <Database size={13} />
+                <span>{isSupabaseActive ? 'Supabase Online' : 'Banco Local'}</span>
+              </span>
+              <span className="mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
+                {isSupabaseActive ? 'SYNC' : 'LOCAL'}
+              </span>
+            </button>
+          )}
+
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              type="button"
+              className="btn btn-secondary btn-sm"
+              style={{ flex: 1, justifyContent: 'center' }}
+              onClick={toggleTheme}
+              title="Alternar entre Modo Carbono Escuro e Modo Claro"
+            >
+              {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
+              {theme === 'dark' ? 'Tema Claro' : 'Tema Escuro'}
+            </button>
+
+            {isSuperAdmin && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-icon-only btn-sm"
+                onClick={() => {
+                  if (window.confirm('Atenção: deseja limpar e zerar todo o banco de dados desta empresa?')) {
+                    clearAllData();
+                  }
+                }}
+                title="Zerar banco de dados da empresa atual"
+                style={{ color: 'var(--text-muted)' }}
+              >
+                <Trash2 size={13} />
+              </button>
+            )}
+          </div>
         </div>
+      </aside>
 
-        {/* Ações de Lançamento */}
-        <div className="sidebar-quick-actions">
-          <button
-            id="btn-quick-entry"
-            className="btn btn-primary"
-            style={{ width: '100%', justifyContent: 'center', padding: '8px 12px' }}
-            onClick={() => {
-              setEditingOrder(null);
-              setIsQuickEntryOpen(true);
-            }}
-          >
-            <Plus size={15} strokeWidth={2.4} />
-            Lançar Pedido
-          </button>
+      {/* Modal para o Gestor/Admin alterar a própria senha */}
+      {isPasswordModalOpen && (
+        <div className="modal-overlay" onClick={() => setIsPasswordModalOpen(false)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '400px' }}>
+            <div className="modal-header">
+              <div className="modal-title">
+                <KeyRound size={16} color="var(--accent-blue)" />
+                Alterar Minha Senha
+              </div>
+              <button className="btn btn-secondary btn-icon-only btn-sm" onClick={() => setIsPasswordModalOpen(false)}>
+                <X size={15} />
+              </button>
+            </div>
+            <form onSubmit={handlePasswordChangeSubmit}>
+              <div className="modal-body">
+                {pwdMessage.text && (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      marginBottom: '12px',
+                      background: pwdMessage.type === 'success' ? 'rgba(16,185,129,0.1)' : 'rgba(239,68,68,0.1)',
+                      border: `1px solid ${pwdMessage.type === 'success' ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`,
+                      color: pwdMessage.type === 'success' ? 'var(--accent-emerald)' : '#f87171'
+                    }}
+                  >
+                    {pwdMessage.text}
+                  </div>
+                )}
 
-          <button
-            id="btn-batch-entry"
-            className="btn btn-secondary btn-sm"
-            style={{ width: '100%', justifyContent: 'center' }}
-            onClick={() => setIsBatchEntryOpen(true)}
-          >
-            <Layers size={13} />
-            Lançamento em Lote
-          </button>
+                <div className="form-group">
+                  <label className="form-label">Nova Senha (mín. 6 caracteres):</label>
+                  <input
+                    type="password"
+                    className="form-input mono"
+                    value={pwdForm.newPassword}
+                    onChange={(e) => setPwdForm({ ...pwdForm, newPassword: e.target.value })}
+                    required
+                    autoFocus
+                  />
+                </div>
+                <div className="form-group">
+                  <label className="form-label">Confirmar Nova Senha:</label>
+                  <input
+                    type="password"
+                    className="form-input mono"
+                    value={pwdForm.confirmPassword}
+                    onChange={(e) => setPwdForm({ ...pwdForm, confirmPassword: e.target.value })}
+                    required
+                  />
+                </div>
+              </div>
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setIsPasswordModalOpen(false)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary btn-sm">
+                  Atualizar Senha
+                </button>
+              </div>
+            </form>
+          </div>
         </div>
-
-        {/* Navegação Principal */}
-        <div>
-          <div className="sidebar-section-label">Operação</div>
-          <nav className="sidebar-nav">
-            <button
-              id="tab-dashboard"
-              className={`sidebar-nav-item ${activeTab === 'dashboard' ? 'active' : ''}`}
-              onClick={() => setActiveTab('dashboard')}
-            >
-              <span className="sidebar-nav-item-left">
-                <BarChart3 size={15} />
-                Visão Geral
-              </span>
-            </button>
-
-            <button
-              id="tab-orders"
-              className={`sidebar-nav-item ${activeTab === 'orders' ? 'active' : ''}`}
-              onClick={() => setActiveTab('orders')}
-            >
-              <span className="sidebar-nav-item-left">
-                <ListFilter size={15} />
-                Fila de Pedidos
-              </span>
-              <span className="sidebar-counter">{metrics.totalOrders}</span>
-            </button>
-
-            <button
-              id="tab-team"
-              className={`sidebar-nav-item ${activeTab === 'team' ? 'active' : ''}`}
-              onClick={() => setActiveTab('team')}
-            >
-              <span className="sidebar-nav-item-left">
-                <Users size={15} />
-                Equipe & Metas
-              </span>
-              <span className="sidebar-counter">{activeDesignersCount}</span>
-            </button>
-          </nav>
-        </div>
-
-        {/* Ferramentas e Gestão */}
-        <div>
-          <div className="sidebar-section-label">Gestão</div>
-          <nav className="sidebar-nav">
-            <button
-              id="btn-sidebar-goals"
-              className="sidebar-nav-item"
-              onClick={() => setIsSectorGoalsModalOpen(true)}
-            >
-              <span className="sidebar-nav-item-left">
-                <SlidersHorizontal size={15} />
-                Empresa, Dias & Metas
-              </span>
-              <span className="sidebar-counter">{metrics.workingDaysCount}d</span>
-            </button>
-
-            <button
-              id="btn-executive-report"
-              className="sidebar-nav-item"
-              onClick={() => setIsReportOpen(true)}
-            >
-              <span className="sidebar-nav-item-left">
-                <Printer size={15} />
-                Relatório Executivo
-              </span>
-            </button>
-
-            <button
-              id="btn-settings-data"
-              className="sidebar-nav-item"
-              onClick={onOpenBackup}
-            >
-              <span className="sidebar-nav-item-left">
-                <Download size={15} />
-                Backup & CSV
-              </span>
-            </button>
-          </nav>
-        </div>
-      </div>
-
-      {/* Rodapé da Sidebar: Banco, Tema e Reset */}
-      <div className="sidebar-footer">
-        <button
-          id="btn-supabase-status"
-          className="sidebar-status-btn"
-          onClick={onOpenSupabase}
-          title={isSupabaseActive ? 'Conectado ao Supabase (Nuvem)' : 'Clique para configurar banco em nuvem'}
-        >
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '7px' }}>
-            <span
-              className="status-dot"
-              style={{
-                background: isSupabaseActive ? 'var(--accent-emerald)' : 'var(--text-muted)'
-              }}
-            />
-            <Database size={13} />
-            <span>{isSupabaseActive ? 'Supabase Online' : 'Banco Local'}</span>
-          </span>
-          <span className="mono" style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>
-            {isSupabaseActive ? 'SYNC' : 'LOCAL'}
-          </span>
-        </button>
-
-        <div style={{ display: 'flex', gap: '6px' }}>
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            style={{ flex: 1, justifyContent: 'center' }}
-            onClick={toggleTheme}
-            title="Alternar entre Modo Carbono Escuro e Modo Claro"
-          >
-            {theme === 'dark' ? <Sun size={13} /> : <Moon size={13} />}
-            {theme === 'dark' ? 'Tema Claro' : 'Tema Escuro'}
-          </button>
-
-          <button
-            type="button"
-            className="btn btn-secondary btn-icon-only btn-sm"
-            onClick={() => {
-              if (window.confirm('Atenção: deseja limpar e zerar todo o banco de dados para começar do zero?')) {
-                clearAllData();
-              }
-            }}
-            title="Zerar banco de dados"
-            style={{ color: 'var(--text-muted)' }}
-          >
-            <Trash2 size={13} />
-          </button>
-        </div>
-      </div>
-    </aside>
+      )}
+    </>
   );
 }

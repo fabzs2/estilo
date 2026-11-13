@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useProduction } from '../context/ProductionContext';
+import { KromaLogo } from './KromaLogo';
 import {
   Printer,
   X,
@@ -121,13 +122,16 @@ export function ExecutiveReportModal() {
               gap: '10px'
             }}
           >
-            <div>
-              <div className="mono" style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '2px' }}>
-                {companyName} • {companySub}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+              <KromaLogo size={36} />
+              <div>
+                <div className="mono" style={{ fontSize: '0.68rem', textTransform: 'uppercase', letterSpacing: '0.06em', color: 'var(--text-muted)', marginBottom: '2px' }}>
+                  {companyName} • {companySub}
+                </div>
+                <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
+                  RELATÓRIO EXECUTIVO DE PRODUÇÃO & METAS
+                </h2>
               </div>
-              <h2 style={{ fontSize: '1.15rem', fontWeight: 700, color: 'var(--text-primary)', letterSpacing: '-0.02em' }}>
-                RELATÓRIO EXECUTIVO DE PRODUÇÃO & METAS
-              </h2>
             </div>
             <div className="mono" style={{ textAlign: 'right', fontSize: '0.73rem', color: 'var(--text-muted)' }}>
               <div><strong>Período:</strong> {dateBounds.label} ({metrics.workingDaysCount}/{metrics.totalMonthWorkingDays}d úteis)</div>

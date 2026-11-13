@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 820 220" fill="none">
+  <defs>
+    <linearGradient id="bgFull" x1="0" y1="0" x2="820" y2="220" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#111113"/>
+      <stop offset="100%" stop-color="#09090b"/>
+    </linearGradient>
+    <linearGradient id="bBlue" x1="56" y1="48" x2="96" y2="172" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#60a5fa"/>
+      <stop offset="100%" stop-color="#2563eb"/>
+    </linearGradient>
+    <linearGradient id="bViolet" x1="168" y1="48" x2="96" y2="116" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="bEmerald" x1="104" y1="106" x2="172" y2="172" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stop-color="#34d399"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Card Background -->
+  <rect width="820" height="220" rx="24" fill="url(#bgFull)" stroke="#27272a" stroke-width="2"/>
+
+  <!-- Emblem Container -->
+  <g transform="translate(36, 26)">
+    <rect x="0" y="0" width="168" height="168" rx="36" fill="#141418" stroke="#2e2e34" stroke-width="3"/>
+    <!-- Registration Corners -->
+    <path d="M22 34V22H34" stroke="#52525b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M146 34V22H134" stroke="#52525b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M22 134V146H34" stroke="#52525b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M146 134V146H134" stroke="#52525b" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/>
+
+    <!-- K Blades -->
+    <rect x="42" y="34" width="26" height="100" rx="6" fill="url(#bBlue)"/>
+    <path d="M104 34H125C130 34 132.5 40 129 44L86 92H68V73L100 36C101 34.7 102.5 34 104 34Z" fill="url(#bViolet)"/>
+    <path d="M85 79L130 129C133.2 132.6 130.6 134 125.8 134H103.5C101.8 134 100.2 133.3 99.1 132L68 97L85 79Z" fill="url(#bEmerald)"/>
+    <circle cx="68" cy="84" r="5" fill="#fafafa"/>
+  </g>
+
+  <!-- Wordmark -->
+  <text x="236" y="114" fill="#fafafa" font-family="Inter, -apple-system, BlinkMacSystemFont, sans-serif" font-size="68" font-weight="800" letter-spacing="-2.5">
+    Kroma<tspan fill="#3b82f6">OPS</tspan>
+  </text>
+
+  <!-- PRO Pill -->
+  <rect x="614" y="70" width="66" height="30" rx="6" fill="#18181b" stroke="#2e2e34" stroke-width="1.5"/>
+  <text x="647" y="90" fill="#a1a1aa" font-family="JetBrains Mono, monospace" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="1.5">
+    PRO
+  </text>
+
+  <!-- Subtitle & Stage Dots -->
+  <circle cx="242" cy="148" r="5" fill="#3b82f6"/>
+  <text x="254" y="153" fill="#a1a1aa" font-family="JetBrains Mono, monospace" font-size="14" font-weight="600" letter-spacing="1">
+    CRIAÇÃO
+  </text>
+
+  <circle cx="356" cy="148" r="5" fill="#8b5cf6"/>
+  <text x="368" y="153" fill="#a1a1aa" font-family="JetBrains Mono, monospace" font-size="14" font-weight="600" letter-spacing="1">
+    FECHAMENTO
+  </text>
+
+  <circle cx="504" cy="148" r="5" fill="#10b981"/>
+  <text x="516" y="153" fill="#a1a1aa" font-family="JetBrains Mono, monospace" font-size="14" font-weight="600" letter-spacing="1">
+    IMPRESSÃO &amp; PLOTTER
+  </text>
+</svg>
+
