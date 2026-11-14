@@ -11,11 +11,18 @@ import {
   X,
   PauseCircle,
   PlayCircle,
-  CalendarMinus
+  CalendarMinus,
+  KeyRound
 } from 'lucide-react';
 
 export function TeamManagement() {
-  const { currentUser } = useAuth();
+  const {
+    currentUser,
+    users,
+    activeTenantId,
+    addManagerToTenant,
+    updateUserCredentials
+  } = useAuth();
   const isOperator = currentUser?.role === 'company_operator';
 
   const {
@@ -25,11 +32,13 @@ export function TeamManagement() {
     deleteDesigner,
     metrics,
     workingDaysConfig,
-    setDesignerAbsenceDays
+    setDesignerAbsenceDays,
+    showToast
   } = useProduction();
 
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [editingId, setEditingId] = useState(null);
+  const [authError, setAuthError] = useState('');
 
   const [formData, setFormData] = useState({
     name: '',
@@ -39,7 +48,9 @@ export function TeamManagement() {
     goalCriacaoArtes: 8,
     goalExportacao: 10,
     goalImpressaoPecas: 120,
-    active: true
+    active: true,
+    loginUsername: '',
+    loginPassword: ''
   });
 
   const colorOptions = [
@@ -53,8 +64,21 @@ export function TeamManagement() {
     '#f43f5e'  // Rose
   ];
 
+  const findLinkedOperatorUser = (designer) => {
+    if (!designer || !Array.isArray(users)) return null;
+    const desNameClean = (designer.name || '').trim().toLowerCase();
+    return users.find(
+      (u) =>
+        u.tenantId === activeTenantId &&
+        u.role === 'company_operator' &&
+        ((u.name || '').trim().toLowerCase() === desNameClean ||
+          (designer.loginUsername && (u.username || '').trim().toLowerCase() === designer.loginUsername.toLowerCase()))
+    );
+  };
+
   const handleOpenNew = () => {
     setEditingId(null);
+    setAuthError('');
     setFormData({
       name: '',
       nickname: '',
@@ -63,13 +87,17 @@ export function TeamManagement() {
       goalCriacaoArtes: 8,
       goalExportacao: 0,
       goalImpressaoPecas: 0,
-      active: true
+      active: true,
+      loginUsername: '',
+      loginPassword: ''
     });
     setIsFormOpen(true);
   };
 
   const handleOpenEdit = (designer) => {
+    const linkedUser = findLinkedOperatorUser(designer);
     setEditingId(designer.id);
+    setAuthError('');
     setFormData({
       name: designer.name,
       nickname: designer.nickname || '',
@@ -78,22 +106,74 @@ export function TeamManagement() {
       goalCriacaoArtes: designer.goalCriacaoArtes ?? 8,
       goalExportacao: designer.goalExportacao ?? 10,
       goalImpressaoPecas: designer.goalImpressaoPecas ?? 120,
-      active: designer.active ?? true
+      active: designer.active ?? true,
+      loginUsername: linkedUser?.username || '',
+      loginPassword: ''
     });
     setIsFormOpen(true);
   };
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
+    setAuthError('');
     if (!formData.name.trim()) {
-      alert('Informe o nome do designer.');
+      alert('Informe o nome do profissional.');
       return;
     }
 
+    const cleanLogin = (formData.loginUsername || '').trim().toLowerCase();
+    const cleanPass = (formData.loginPassword || '').trim();
+
+    if (cleanLogin || cleanPass) {
+      const existingDesigner = editingId ? designers.find((d) => d.id === editingId) : null;
+      const linkedUser = existingDesigner ? findLinkedOperatorUser(existingDesigner) : null;
+
+      if (linkedUser) {
+        if (!cleanLogin) {
+          setAuthError('Informe o login/e-mail do operador.');
+          return;
+        }
+        if (cleanPass && cleanPass.length < 6) {
+          setAuthError('A nova senha deve ter no mínimo 6 caracteres.');
+          return;
+        }
+        const res = await updateUserCredentials(linkedUser.id, {
+          name: formData.name.trim(),
+          username: cleanLogin,
+          newPassword: cleanPass || undefined
+        });
+        if (!res.ok) {
+          setAuthError(res.error);
+          return;
+        }
+      } else {
+        if (!cleanLogin || cleanPass.length < 6) {
+          setAuthError('Para criar o acesso de Operador ao sistema, informe Login/E-mail e uma Senha com mínimo de 6 caracteres.');
+          return;
+        }
+        const res = await addManagerToTenant({
+          tenantId: activeTenantId,
+          name: formData.name.trim(),
+          username: cleanLogin,
+          password: cleanPass,
+          role: 'company_operator'
+        });
+        if (!res.ok) {
+          setAuthError(res.error);
+          return;
+        }
+        if (showToast) {
+          showToast(`Login de operador "${cleanLogin}" ativado para ${formData.name.trim()}!`);
+        }
+      }
+    }
+
+    const { loginUsername: _lu, loginPassword: _lp, ...designerPayload } = formData;
+
     if (editingId) {
-      updateDesigner(editingId, formData);
+      await updateDesigner(editingId, designerPayload);
     } else {
-      addDesigner(formData);
+      await addDesigner(designerPayload);
     }
     setIsFormOpen(false);
   };
@@ -158,6 +238,22 @@ export function TeamManagement() {
 
             <form onSubmit={handleSubmit}>
               <div className="modal-body">
+                {authError && (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      marginBottom: '12px',
+                      background: 'rgba(239,68,68,0.1)',
+                      border: '1px solid rgba(239,68,68,0.3)',
+                      color: '#f87171'
+                    }}
+                  >
+                    {authError}
+                  </div>
+                )}
+
                 <div className="form-grid-2">
                   <div className="form-group">
                     <label className="form-label" htmlFor="des-name">Nome Completo:</label>
@@ -304,6 +400,49 @@ export function TeamManagement() {
                     </div>
                   </div>
                 </div>
+
+                {/* Acesso ao Sistema (Login de Operador - Opcional) */}
+                {!isOperator && (
+                  <div style={{ borderTop: '1px solid var(--border-subtle)', margin: '14px 0 4px', paddingTop: '14px' }}>
+                    <h4 style={{ fontSize: '0.8125rem', fontWeight: 600, color: 'var(--text-primary)', marginBottom: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <KeyRound size={14} color="var(--accent-blue)" />
+                      Acesso ao Sistema (Login de Operador — Opcional)
+                    </h4>
+                    <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                      Preencha abaixo se desejar que este profissional tenha um login próprio para entrar no sistema como <strong>Operador</strong>.
+                    </p>
+
+                    <div className="form-grid-2">
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" htmlFor="des-login-user">
+                          Login ou E-mail de Acesso:
+                        </label>
+                        <input
+                          id="des-login-user"
+                          type="text"
+                          className="form-input mono"
+                          placeholder="ex: lucas ou lucas@estilo.com"
+                          value={formData.loginUsername || ''}
+                          onChange={(e) => setFormData({ ...formData, loginUsername: e.target.value })}
+                        />
+                      </div>
+
+                      <div className="form-group" style={{ marginBottom: 0 }}>
+                        <label className="form-label" htmlFor="des-login-pass">
+                          {editingId && formData.loginUsername ? 'Nova Senha (deixe em branco p/ manter):' : 'Senha de Acesso (mín. 6 dígitos):'}
+                        </label>
+                        <input
+                          id="des-login-pass"
+                          type="text"
+                          className="form-input mono"
+                          placeholder="Ex: estilo123"
+                          value={formData.loginPassword || ''}
+                          onChange={(e) => setFormData({ ...formData, loginPassword: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="modal-footer">
@@ -355,6 +494,7 @@ export function TeamManagement() {
           const stats = metrics.designerStats.find((s) => s.id === designer.id);
           const isPaused = designer.active === false;
           const absenceDays = Number(workingDaysConfig?.designerAbsences?.[designer.id] || 0);
+          const linkedOp = findLinkedOperatorUser(designer);
 
           return (
             <div
@@ -399,6 +539,35 @@ export function TeamManagement() {
                       <div style={{ fontSize: '0.72rem', color: 'var(--text-muted)' }}>
                         {designer.nickname ? `${designer.nickname} • ${designer.role}` : designer.role}
                       </div>
+                      {!isOperator && (
+                        <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          {linkedOp ? (
+                            <span
+                              className="mono"
+                              style={{
+                                fontSize: '0.64rem',
+                                padding: '1px 6px',
+                                borderRadius: '4px',
+                                background: 'rgba(16, 185, 129, 0.12)',
+                                border: '1px solid rgba(16, 185, 129, 0.28)',
+                                color: '#34d399'
+                              }}
+                              title="Este profissional possui login de Operador ativo"
+                            >
+                              Login ativo: {linkedOp.username}
+                            </span>
+                          ) : (
+                            <span
+                              style={{
+                                fontSize: '0.64rem',
+                                color: 'var(--text-muted)'
+                              }}
+                            >
+                              Sem login de acesso (clique no lápis p/ criar)
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 

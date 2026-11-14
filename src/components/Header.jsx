@@ -705,22 +705,49 @@ export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }
                             {op.name}
                           </div>
                           <div className="mono" style={{ fontSize: '0.69rem', color: 'var(--text-muted)' }}>
-                            {op.username}
+                            Login: {op.username}
                           </div>
                         </div>
-                        <button
-                          type="button"
-                          className="btn btn-danger btn-icon-only btn-sm"
-                          style={{ width: '24px', height: '24px' }}
-                          onClick={() => {
-                            if (window.confirm(`Remover o login do operador "${op.name}"?`)) {
-                              deleteUser(op.id);
-                            }
-                          }}
-                          title="Excluir operador"
-                        >
-                          <Trash2 size={12} />
-                        </button>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          <button
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '3px 8px', fontSize: '0.68rem' }}
+                            onClick={async () => {
+                              const newPwd = window.prompt(
+                                `Digite a nova senha para o operador "${op.name}" (mínimo 6 caracteres):`
+                              );
+                              if (!newPwd) return;
+                              if (newPwd.trim().length < 6) {
+                                setOpMessage({ type: 'error', text: 'A senha precisa ter pelo menos 6 caracteres.' });
+                                return;
+                              }
+                              const res = await updateUserCredentials(op.id, { newPassword: newPwd.trim() });
+                              if (res.ok) {
+                                setOpMessage({ type: 'success', text: `Senha de "${op.name}" atualizada com sucesso!` });
+                              } else {
+                                setOpMessage({ type: 'error', text: res.error });
+                              }
+                            }}
+                            title="Redefinir senha deste operador"
+                          >
+                            <KeyRound size={11} />
+                            Nova Senha
+                          </button>
+                          <button
+                            type="button"
+                            className="btn btn-danger btn-icon-only btn-sm"
+                            style={{ width: '24px', height: '24px' }}
+                            onClick={() => {
+                              if (window.confirm(`Remover o login do operador "${op.name}"?`)) {
+                                deleteUser(op.id);
+                              }
+                            }}
+                            title="Excluir operador"
+                          >
+                            <Trash2 size={12} />
+                          </button>
+                        </div>
                       </div>
                     ))}
                   </div>
