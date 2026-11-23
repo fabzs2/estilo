@@ -1008,7 +1008,7 @@ export function ProductionProvider({ children, tenantId = 'tenant_default', tena
       try {
         if (isDefaultTenant) {
           await supabase.from('production_entries').delete().not('id', 'like', 'tenant_%').not('id', 'like', '__%');
-          await supabase.from('designers').delete().not('id', 'like', 'tenant_%');
+          await supabase.from('designers').delete().not('id', 'like', 'tenant_%').not('id', 'like', '__%');
         } else {
           await supabase.from('production_entries').delete().like('id', `${tenantId}__%`);
           await supabase.from('designers').delete().like('id', `${tenantId}__%`);

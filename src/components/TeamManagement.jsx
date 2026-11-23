@@ -40,6 +40,11 @@ export function TeamManagement() {
   const [editingId, setEditingId] = useState(null);
   const [authError, setAuthError] = useState('');
 
+  // Modal rápido exclusivo para Criar / Alterar Login & Senha direto no card do funcionário
+  const [quickLoginDesigner, setQuickLoginDesigner] = useState(null);
+  const [quickLoginForm, setQuickLoginForm] = useState({ username: '', password: '' });
+  const [quickLoginError, setQuickLoginError] = useState('');
+
   const [formData, setFormData] = useState({
     name: '',
     nickname: '',
@@ -64,16 +69,88 @@ export function TeamManagement() {
     '#f43f5e'  // Rose
   ];
 
+  const normalizeStr = (s) =>
+    String(s || '')
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+
+  const suggestLoginFromDesigner = (des) => {
+    const base = normalizeStr(des?.nickname || des?.name || '').split(/[\s(]+/)[0];
+    return base.replace(/[^a-z0-9._-]/g, '');
+  };
+
   const findLinkedOperatorUser = (designer) => {
     if (!designer || !Array.isArray(users)) return null;
-    const desNameClean = (designer.name || '').trim().toLowerCase();
+    const desNameClean = normalizeStr(designer.name);
+    const desLoginClean = normalizeStr(designer.loginUsername);
     return users.find(
       (u) =>
-        u.tenantId === activeTenantId &&
+        (u.tenantId === activeTenantId || (!u.tenantId && activeTenantId === 'tenant_default')) &&
         u.role === 'company_operator' &&
-        ((u.name || '').trim().toLowerCase() === desNameClean ||
-          (designer.loginUsername && (u.username || '').trim().toLowerCase() === designer.loginUsername.toLowerCase()))
+        (normalizeStr(u.name) === desNameClean ||
+          (desLoginClean && normalizeStr(u.username) === desLoginClean) ||
+          normalizeStr(u.username) === desNameClean)
     );
+  };
+
+  const handleOpenQuickLogin = (designer) => {
+    const linked = findLinkedOperatorUser(designer);
+    setQuickLoginDesigner(designer);
+    setQuickLoginError('');
+    setQuickLoginForm({
+      username: linked?.username || designer.loginUsername || suggestLoginFromDesigner(designer),
+      password: ''
+    });
+  };
+
+  const handleQuickLoginSubmit = async (e) => {
+    e.preventDefault();
+    setQuickLoginError('');
+    if (!quickLoginDesigner) return;
+
+    const cleanLogin = (quickLoginForm.username || suggestLoginFromDesigner(quickLoginDesigner)).trim().toLowerCase();
+    const cleanPass = (quickLoginForm.password || '').trim();
+    const linked = findLinkedOperatorUser(quickLoginDesigner);
+
+    if (!cleanLogin) {
+      setQuickLoginError('Informe um usuário ou e-mail de login.');
+      return;
+    }
+
+    if (linked && !cleanPass) {
+      const res = await updateUserCredentials(linked.id, {
+        name: quickLoginDesigner.name.trim(),
+        username: cleanLogin
+      });
+      if (!res.ok) {
+        setQuickLoginError(res.error);
+        return;
+      }
+    } else {
+      if (cleanPass.length < 3) {
+        setQuickLoginError('Informe uma senha com pelo menos 3 caracteres.');
+        return;
+      }
+      const res = await addManagerToTenant({
+        tenantId: activeTenantId,
+        name: quickLoginDesigner.name.trim(),
+        username: cleanLogin,
+        password: cleanPass,
+        role: 'company_operator'
+      });
+      if (!res.ok) {
+        setQuickLoginError(res.error);
+        return;
+      }
+    }
+
+    await updateDesigner(quickLoginDesigner.id, { loginUsername: cleanLogin });
+    if (showToast) {
+      showToast(`Acesso de "${quickLoginDesigner.name}" salvo! Login: ${cleanLogin}`);
+    }
+    setQuickLoginDesigner(null);
   };
 
   const handleOpenNew = () => {
@@ -107,7 +184,7 @@ export function TeamManagement() {
       goalExportacao: designer.goalExportacao ?? 10,
       goalImpressaoPecas: designer.goalImpressaoPecas ?? 120,
       active: designer.active ?? true,
-      loginUsername: linkedUser?.username || '',
+      loginUsername: linkedUser?.username || designer.loginUsername || '',
       loginPassword: ''
     });
     setIsFormOpen(true);
@@ -121,34 +198,30 @@ export function TeamManagement() {
       return;
     }
 
-    const cleanLogin = (formData.loginUsername || '').trim().toLowerCase();
+    const existingDesigner = editingId ? designers.find((d) => d.id === editingId) : null;
+    const linkedUser = existingDesigner ? findLinkedOperatorUser(existingDesigner) : null;
+
+    let cleanLogin = (formData.loginUsername || '').trim().toLowerCase();
     const cleanPass = (formData.loginPassword || '').trim();
 
-    if (cleanLogin || cleanPass) {
-      const existingDesigner = editingId ? designers.find((d) => d.id === editingId) : null;
-      const linkedUser = existingDesigner ? findLinkedOperatorUser(existingDesigner) : null;
+    // Se o gestor digitou apenas a senha sem preencher o campo de login, gera o login automaticamente pelo apelido/nome
+    if (!cleanLogin && cleanPass) {
+      cleanLogin = suggestLoginFromDesigner(formData) || normalizeStr(formData.name);
+    }
 
-      if (linkedUser) {
-        if (!cleanLogin) {
-          setAuthError('Informe o login/e-mail do operador.');
-          return;
-        }
-        if (cleanPass && cleanPass.length < 6) {
-          setAuthError('A nova senha deve ter no mínimo 6 caracteres.');
-          return;
-        }
+    if (cleanLogin || cleanPass) {
+      if (linkedUser && !cleanPass) {
         const res = await updateUserCredentials(linkedUser.id, {
           name: formData.name.trim(),
-          username: cleanLogin,
-          newPassword: cleanPass || undefined
+          username: cleanLogin
         });
         if (!res.ok) {
           setAuthError(res.error);
           return;
         }
       } else {
-        if (!cleanLogin || cleanPass.length < 6) {
-          setAuthError('Para criar o acesso de Operador ao sistema, informe Login/E-mail e uma Senha com mínimo de 6 caracteres.');
+        if (!cleanPass || cleanPass.length < 3) {
+          setAuthError('Para ativar ou atualizar o login deste funcionário, digite uma senha (mínimo 3 caracteres).');
           return;
         }
         const res = await addManagerToTenant({
@@ -163,12 +236,13 @@ export function TeamManagement() {
           return;
         }
         if (showToast) {
-          showToast(`Login de operador "${cleanLogin}" ativado para ${formData.name.trim()}!`);
+          showToast(`Login "${cleanLogin}" ativado para ${formData.name.trim()}!`);
         }
       }
     }
 
-    const { loginUsername: _lu, loginPassword: _lp, ...designerPayload } = formData;
+    const { loginPassword: _lp, ...designerPayload } = formData;
+    designerPayload.loginUsername = cleanLogin || designerPayload.loginUsername || '';
 
     if (editingId) {
       await updateDesigner(editingId, designerPayload);
@@ -429,7 +503,9 @@ export function TeamManagement() {
 
                       <div className="form-group" style={{ marginBottom: 0 }}>
                         <label className="form-label" htmlFor="des-login-pass">
-                          {editingId && formData.loginUsername ? 'Nova Senha (deixe em branco p/ manter):' : 'Senha de Acesso (mín. 6 dígitos):'}
+                          {editingId && findLinkedOperatorUser(designers.find((d) => d.id === editingId))
+                            ? 'Nova Senha (deixe em branco p/ manter):'
+                            : 'Senha de Acesso (mín. 3 dígitos):'}
                         </label>
                         <input
                           id="des-login-pass"
@@ -441,6 +517,22 @@ export function TeamManagement() {
                         />
                       </div>
                     </div>
+
+                    {authError && (
+                      <div
+                        style={{
+                          padding: '8px 12px',
+                          borderRadius: '6px',
+                          fontSize: '0.75rem',
+                          marginTop: '10px',
+                          background: 'rgba(239,68,68,0.1)',
+                          border: '1px solid rgba(239,68,68,0.3)',
+                          color: '#f87171'
+                        }}
+                      >
+                        {authError}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -540,31 +632,52 @@ export function TeamManagement() {
                         {designer.nickname ? `${designer.nickname} • ${designer.role}` : designer.role}
                       </div>
                       {!isOperator && (
-                        <div style={{ marginTop: '4px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        <div style={{ marginTop: '6px', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                           {linkedOp ? (
-                            <span
+                            <button
+                              type="button"
+                              onClick={() => handleOpenQuickLogin(designer)}
                               className="mono"
                               style={{
-                                fontSize: '0.64rem',
-                                padding: '1px 6px',
+                                fontSize: '0.66rem',
+                                padding: '2px 8px',
                                 borderRadius: '4px',
-                                background: 'rgba(16, 185, 129, 0.12)',
-                                border: '1px solid rgba(16, 185, 129, 0.28)',
-                                color: '#34d399'
+                                background: 'rgba(16, 185, 129, 0.14)',
+                                border: '1px solid rgba(16, 185, 129, 0.35)',
+                                color: '#34d399',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontWeight: 600
                               }}
-                              title="Este profissional possui login de Operador ativo"
+                              title="Clique para alterar o login ou redefinir a senha deste funcionário"
                             >
-                              Login ativo: {linkedOp.username}
-                            </span>
+                              <KeyRound size={11} />
+                              Login: {linkedOp.username} (Alterar Senha)
+                            </button>
                           ) : (
-                            <span
+                            <button
+                              type="button"
+                              onClick={() => handleOpenQuickLogin(designer)}
                               style={{
-                                fontSize: '0.64rem',
-                                color: 'var(--text-muted)'
+                                fontSize: '0.67rem',
+                                padding: '2px 8px',
+                                borderRadius: '4px',
+                                background: 'rgba(59, 130, 246, 0.12)',
+                                border: '1px solid rgba(59, 130, 246, 0.35)',
+                                color: 'var(--accent-blue)',
+                                cursor: 'pointer',
+                                display: 'inline-flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                fontWeight: 600
                               }}
+                              title="Clique para criar usuário e senha para este funcionário entrar no sistema"
                             >
-                              Sem login de acesso (clique no lápis p/ criar)
-                            </span>
+                              <KeyRound size={11} />
+                              + Criar Login de Acesso
+                            </button>
                           )}
                         </div>
                       )}
@@ -754,6 +867,87 @@ export function TeamManagement() {
           );
         })}
       </div>
+
+      {/* Modal Rápido de Login & Senha direto no Card do Funcionário */}
+      {quickLoginDesigner && !isOperator && (
+        <div className="modal-overlay" onClick={() => setQuickLoginDesigner(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '420px' }}>
+            <div className="modal-header">
+              <div className="modal-title" style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <KeyRound size={16} color="var(--accent-blue)" />
+                Acesso do Funcionário — {quickLoginDesigner.name}
+              </div>
+              <button className="btn btn-secondary btn-icon-only btn-sm" onClick={() => setQuickLoginDesigner(null)}>
+                <X size={15} />
+              </button>
+            </div>
+
+            <form onSubmit={handleQuickLoginSubmit}>
+              <div className="modal-body">
+                <p style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginBottom: '12px', lineHeight: 1.45 }}>
+                  Defina o usuário/e-mail e a senha para <strong>{quickLoginDesigner.name}</strong> entrar no sistema como <strong>Operador</strong>. Ele também poderá entrar digitando o próprio nome.
+                </p>
+
+                {quickLoginError && (
+                  <div
+                    style={{
+                      padding: '8px 12px',
+                      borderRadius: '6px',
+                      fontSize: '0.75rem',
+                      marginBottom: '12px',
+                      background: 'rgba(239,68,68,0.1)',
+                      border: '1px solid rgba(239,68,68,0.3)',
+                      color: '#f87171'
+                    }}
+                  >
+                    {quickLoginError}
+                  </div>
+                )}
+
+                <div className="form-group">
+                  <label className="form-label" htmlFor="quick-login-user">
+                    Usuário ou E-mail de Login:
+                  </label>
+                  <input
+                    id="quick-login-user"
+                    type="text"
+                    className="form-input mono"
+                    placeholder="ex: lucas ou lucas@estilo.com"
+                    value={quickLoginForm.username}
+                    onChange={(e) => setQuickLoginForm({ ...quickLoginForm, username: e.target.value })}
+                    required
+                  />
+                </div>
+
+                <div className="form-group" style={{ marginBottom: 0 }}>
+                  <label className="form-label" htmlFor="quick-login-pass">
+                    Senha de Acesso (mín. 3 dígitos):
+                  </label>
+                  <input
+                    id="quick-login-pass"
+                    type="text"
+                    className="form-input mono"
+                    placeholder="Digite a senha (ex: 123456)"
+                    value={quickLoginForm.password}
+                    onChange={(e) => setQuickLoginForm({ ...quickLoginForm, password: e.target.value })}
+                    autoFocus
+                    required={!findLinkedOperatorUser(quickLoginDesigner)}
+                  />
+                </div>
+              </div>
+
+              <div className="modal-footer">
+                <button type="button" className="btn btn-secondary btn-sm" onClick={() => setQuickLoginDesigner(null)}>
+                  Cancelar
+                </button>
+                <button type="submit" className="btn btn-primary btn-sm">
+                  Salvar Login & Senha
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

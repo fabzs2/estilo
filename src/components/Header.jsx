@@ -119,14 +119,22 @@ export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }
   const handleAddOperatorSubmit = async (e) => {
     e.preventDefault();
     setOpMessage({ type: '', text: '' });
-    if (!opForm.name.trim() || !opForm.username.trim() || opForm.password.trim().length < 6) {
-      setOpMessage({ type: 'error', text: 'Preencha nome, login e senha (mínimo 6 caracteres).' });
+    if (!opForm.name.trim() || opForm.password.trim().length < 3) {
+      setOpMessage({ type: 'error', text: 'Preencha o nome, login e uma senha (mínimo 3 caracteres).' });
       return;
     }
+    const autoUser =
+      opForm.username.trim() ||
+      opForm.name
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '')
+        .split(/[\s(]+/)[0];
     const res = await addManagerToTenant({
       tenantId: activeTenantId,
       name: opForm.name,
-      username: opForm.username,
+      username: autoUser,
       password: opForm.password,
       role: 'company_operator'
     });
@@ -135,7 +143,12 @@ export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }
       return;
     }
     setOpForm({ name: '', username: '', password: '' });
-    setOpMessage({ type: 'success', text: `Login de operador "${res.user.name}" criado com sucesso!` });
+    setOpMessage({
+      type: 'success',
+      text: res.updatedExisting
+        ? `Senha e login do operador "${res.user.name}" (Login: ${res.user.username}) atualizados com sucesso!`
+        : `Login de operador "${res.user.name}" (Login: ${res.user.username}) criado com sucesso!`
+    });
   };
 
   return (
@@ -634,8 +647,43 @@ export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }
               )}
 
               <form onSubmit={handleAddOperatorSubmit} style={{ marginBottom: '16px' }}>
+                {designers.length > 0 && (
+                  <div style={{ marginBottom: '10px' }}>
+                    <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginBottom: '5px' }}>
+                      Selecionar funcionário da Equipe (clique para preencher rápido):
+                    </div>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '5px' }}>
+                      {designers.map((d) => {
+                        const suggestedUser = (d.loginUsername || d.nickname || d.name || '')
+                          .trim()
+                          .toLowerCase()
+                          .normalize('NFD')
+                          .replace(/[\u0300-\u036f]/g, '')
+                          .split(/[\s(]+/)[0];
+                        return (
+                          <button
+                            key={d.id}
+                            type="button"
+                            className="btn btn-secondary btn-sm"
+                            style={{ padding: '2px 8px', fontSize: '0.68rem' }}
+                            onClick={() =>
+                              setOpForm((prev) => ({
+                                ...prev,
+                                name: d.name,
+                                username: suggestedUser
+                              }))
+                            }
+                          >
+                            {d.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
                 <div className="form-group">
-                  <label className="form-label">Nome do Operador / Designer:</label>
+                  <label className="form-label">Nome do Operador / Funcionário:</label>
                   <input
                     type="text"
                     className="form-input"
@@ -651,18 +699,18 @@ export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }
                     <input
                       type="text"
                       className="form-input mono"
-                      placeholder="ex: lucas@fabrica.com"
+                      placeholder="ex: lucas ou lucas@estilo.com"
                       value={opForm.username}
                       onChange={(e) => setOpForm({ ...opForm, username: e.target.value })}
                       required
                     />
                   </div>
                   <div className="form-group">
-                    <label className="form-label">Senha Inicial (mín. 6 dígitos):</label>
+                    <label className="form-label">Senha (mín. 3 dígitos):</label>
                     <input
                       type="text"
                       className="form-input mono"
-                      placeholder="Ex: Arte@2026"
+                      placeholder="Ex: 123456"
                       value={opForm.password}
                       onChange={(e) => setOpForm({ ...opForm, password: e.target.value })}
                       required
@@ -671,7 +719,7 @@ export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }
                 </div>
                 <button type="submit" className="btn btn-primary btn-sm" style={{ width: '100%', justifyContent: 'center' }}>
                   <Plus size={14} />
-                  Criar Login de Operador
+                  Salvar / Atualizar Login de Operador
                 </button>
               </form>
 
@@ -715,11 +763,11 @@ export function Header({ activeTab, setActiveTab, onOpenBackup, onOpenSupabase }
                             style={{ padding: '3px 8px', fontSize: '0.68rem' }}
                             onClick={async () => {
                               const newPwd = window.prompt(
-                                `Digite a nova senha para o operador "${op.name}" (mínimo 6 caracteres):`
+                                `Digite a nova senha para o operador "${op.name}" (mínimo 3 caracteres):`
                               );
                               if (!newPwd) return;
-                              if (newPwd.trim().length < 6) {
-                                setOpMessage({ type: 'error', text: 'A senha precisa ter pelo menos 6 caracteres.' });
+                              if (newPwd.trim().length < 3) {
+                                setOpMessage({ type: 'error', text: 'A senha precisa ter pelo menos 3 caracteres.' });
                                 return;
                               }
                               const res = await updateUserCredentials(op.id, { newPassword: newPwd.trim() });

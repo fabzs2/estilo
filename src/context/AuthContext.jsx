@@ -62,6 +62,14 @@ export async function verifyPassword(password, salt, expectedHash) {
   return false;
 }
 
+export function normalizeLoginIdentifier(str) {
+  return String(str || '')
+    .trim()
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+}
+
 function mergeUniqueById(localList = [], remoteList = [], deletedIds = []) {
   const deletedSet = new Set(deletedIds || []);
   const map = new Map();
@@ -166,10 +174,19 @@ export function AuthProvider({ children }) {
         });
         const { error } = await supabase.from('production_entries').upsert(fullRow);
         if (error) {
-          // Fallback caso a tabela production_entries no Supabase não tenha a coluna work_type
-          const { work_type: _wt, complexity: _cx, ...safeRow } = fullRow;
+          // Fallback caso a tabela production_entries no Supabase não tenha a coluna work_type/complexity
+          const { work_type: _wt, complexity: _cx, order_type: _ot, ...safeRow } = fullRow;
           await supabase.from('production_entries').upsert(safeRow);
         }
+
+        // Redundância segura na tabela designers (que não possui restrições de stage/data/colunas extras)
+        await supabase.from('designers').upsert({
+          id: SAAS_AUTH_ENTRY_ID,
+          name: '__SYS_AUTH__',
+          nickname: JSON.stringify(payload),
+          role: '__sys_auth__',
+          active: false
+        });
       } catch (err) {
         console.error('Erro ao sincronizar registro de acessos no Supabase:', err);
       }
@@ -249,21 +266,24 @@ export function AuthProvider({ children }) {
       let remoteDeletedUsers = [];
       let remoteDeletedTenants = [];
 
-      // 2. Se Supabase estiver ativo, busca registro atualizado da nuvem e mescla sem perder criados localmente
+      // 2. Se Supabase estiver ativo, busca registro atualizado da nuvem (em production_entries e designers) e mescla sem perder criados localmente
       if (isSupabaseActive && supabase) {
-        try {
-          const { data: authRow } = await supabase
-            .from('production_entries')
-            .select('notes')
-            .eq('id', SAAS_AUTH_ENTRY_ID)
-            .maybeSingle();
-
-          if (authRow && authRow.notes) {
-            const remoteParsed = JSON.parse(authRow.notes);
-            if (Array.isArray(remoteParsed.tenants)) remoteTenants = remoteParsed.tenants;
-            if (Array.isArray(remoteParsed.users)) remoteUsers = remoteParsed.users;
-            if (Array.isArray(remoteParsed.deletedUserIds)) remoteDeletedUsers = remoteParsed.deletedUserIds;
-            if (Array.isArray(remoteParsed.deletedTenantIds)) remoteDeletedTenants = remoteParsed.deletedTenantIds;
+        const applyRemoteJson = (jsonStr) => {
+          if (!jsonStr) return;
+          try {
+            const remoteParsed = JSON.parse(jsonStr);
+            if (Array.isArray(remoteParsed.deletedUserIds)) {
+              remoteDeletedUsers = Array.from(new Set([...remoteDeletedUsers, ...remoteParsed.deletedUserIds]));
+            }
+            if (Array.isArray(remoteParsed.deletedTenantIds)) {
+              remoteDeletedTenants = Array.from(new Set([...remoteDeletedTenants, ...remoteParsed.deletedTenantIds]));
+            }
+            if (Array.isArray(remoteParsed.tenants)) {
+              remoteTenants = mergeUniqueById(remoteTenants, remoteParsed.tenants, remoteDeletedTenants);
+            }
+            if (Array.isArray(remoteParsed.users)) {
+              remoteUsers = mergeUniqueById(remoteUsers, remoteParsed.users, remoteDeletedUsers);
+            }
             if (remoteParsed.saasConfig) {
               loadedSaasConfig = {
                 ...loadedSaasConfig,
@@ -274,9 +294,35 @@ export function AuthProvider({ children }) {
             if (typeof remoteParsed.hasCustomizedSuperAdmin === 'boolean') {
               customizedFlag = customizedFlag || remoteParsed.hasCustomizedSuperAdmin;
             }
+          } catch {
+            // ignore invalid JSON
+          }
+        };
+
+        try {
+          const { data: authRow } = await supabase
+            .from('production_entries')
+            .select('notes')
+            .eq('id', SAAS_AUTH_ENTRY_ID)
+            .maybeSingle();
+          if (authRow && authRow.notes) {
+            applyRemoteJson(authRow.notes);
           }
         } catch {
-          // ignore if not found yet
+          // ignore
+        }
+
+        try {
+          const { data: desAuthRow } = await supabase
+            .from('designers')
+            .select('nickname')
+            .eq('id', SAAS_AUTH_ENTRY_ID)
+            .maybeSingle();
+          if (desAuthRow && desAuthRow.nickname) {
+            applyRemoteJson(desAuthRow.nickname);
+          }
+        } catch {
+          // ignore
         }
       }
 
@@ -362,6 +408,15 @@ export function AuthProvider({ children }) {
       } catch {
         // ignore
       }
+
+      persistAuthRegistryToSupabase(
+        loadedTenants,
+        loadedUsers,
+        customizedFlag,
+        loadedSaasConfig,
+        mergedDeletedUsers,
+        mergedDeletedTenants
+      );
 
       if (!isMounted) return;
 
@@ -516,15 +571,10 @@ export function AuthProvider({ children }) {
     }
 
     if (isSupabaseActive && supabase) {
-      try {
-        const { data: authRow } = await supabase
-          .from('production_entries')
-          .select('notes')
-          .eq('id', SAAS_AUTH_ENTRY_ID)
-          .maybeSingle();
-
-        if (authRow && authRow.notes) {
-          const remoteParsed = JSON.parse(authRow.notes);
+      const mergeRemoteAuthJson = (jsonStr) => {
+        if (!jsonStr) return;
+        try {
+          const remoteParsed = JSON.parse(jsonStr);
           if (Array.isArray(remoteParsed.deletedUserIds)) {
             latestDeletedUsers = Array.from(new Set([...latestDeletedUsers, ...remoteParsed.deletedUserIds]));
           }
@@ -537,6 +587,34 @@ export function AuthProvider({ children }) {
           if (Array.isArray(remoteParsed.tenants)) {
             latestTenants = mergeUniqueById(latestTenants, remoteParsed.tenants, latestDeletedTenants);
           }
+        } catch {
+          // ignore
+        }
+      };
+
+      try {
+        const { data: authRow } = await supabase
+          .from('production_entries')
+          .select('notes')
+          .eq('id', SAAS_AUTH_ENTRY_ID)
+          .maybeSingle();
+
+        if (authRow && authRow.notes) {
+          mergeRemoteAuthJson(authRow.notes);
+        }
+      } catch {
+        // ignore
+      }
+
+      try {
+        const { data: desAuthRow } = await supabase
+          .from('designers')
+          .select('nickname')
+          .eq('id', SAAS_AUTH_ENTRY_ID)
+          .maybeSingle();
+
+        if (desAuthRow && desAuthRow.nickname) {
+          mergeRemoteAuthJson(desAuthRow.nickname);
         }
       } catch {
         // ignore
@@ -546,14 +624,48 @@ export function AuthProvider({ children }) {
     if (latestUsers.length > 0) setUsers(latestUsers);
     if (latestTenants.length > 0) setTenants(latestTenants);
 
-    // Permite entrar digitando tanto o Login/E-mail quanto o Nome cadastrado do usuário/operador
-    const matchingUsers = latestUsers.filter(
-      (u) =>
-        (u.username || '').trim().toLowerCase() === cleanUser ||
-        (u.name || '').trim().toLowerCase() === cleanUser
-    );
+    try {
+      localStorage.setItem(
+        AUTH_STORAGE_KEY,
+        JSON.stringify({
+          tenants: latestTenants,
+          users: latestUsers,
+          deletedUserIds: latestDeletedUsers,
+          deletedTenantIds: latestDeletedTenants,
+          hasCustomizedSuperAdmin,
+          saasConfig,
+          updatedAt: new Date().toISOString()
+        })
+      );
+    } catch {
+      // ignore
+    }
 
-    const registerFailure = () => {
+    const normInput = normalizeLoginIdentifier(cleanUser);
+    const normInputPrefix = normInput.split('@')[0];
+
+    // Permite entrar digitando Login/E-mail completo, usuário antes do @, Nome completo ou Primeiro Nome
+    const matchingUsers = latestUsers
+      .filter((u) => {
+        const normUsername = normalizeLoginIdentifier(u.username);
+        const normUsernamePrefix = normUsername.split('@')[0];
+        const normName = normalizeLoginIdentifier(u.name);
+        const normFirstName = normName.split(/[\s(]+/)[0];
+
+        return (
+          normUsername === normInput ||
+          normName === normInput ||
+          (normInputPrefix && normUsernamePrefix === normInput) ||
+          (normFirstName && normFirstName.length >= 2 && normFirstName === normInput)
+        );
+      })
+      .sort((a, b) => {
+        const tA = a.updatedAt || a.createdAt || '';
+        const tB = b.updatedAt || b.createdAt || '';
+        return tB.localeCompare(tA);
+      });
+
+    const registerFailure = (customReason) => {
       const nextAttempts = (lockoutState.attempts || 0) + 1;
       const lockedUntil = nextAttempts >= 5 ? Date.now() + 60 * 1000 : 0;
       const nextLock = { attempts: nextAttempts >= 5 ? 0 : nextAttempts, lockedUntil };
@@ -566,11 +678,17 @@ export function AuthProvider({ children }) {
       if (lockedUntil > 0) {
         return 'Acesso bloqueado temporariamente por 60 segundos após 5 tentativas inválidas.';
       }
-      return `Credenciais inválidas. (${5 - nextAttempts} tentativa(s) restante(s))`;
+      const baseMsg = customReason || 'Credenciais inválidas.';
+      return `${baseMsg} (${5 - nextAttempts} tentativa(s) restante(s))`;
     };
 
     if (matchingUsers.length === 0) {
-      return { ok: false, error: registerFailure() };
+      return {
+        ok: false,
+        error: registerFailure(
+          `Usuário "${usernameInput.trim()}" não encontrado. Crie ou confira o login em "Logins de Operadores" ou "Equipe & Metas".`
+        )
+      };
     }
 
     let authenticatedUser = null;
@@ -583,7 +701,11 @@ export function AuthProvider({ children }) {
     }
 
     if (!authenticatedUser) {
-      return { ok: false, error: registerFailure() };
+      const targetLabel = matchingUsers[0]?.name || matchingUsers[0]?.username || usernameInput.trim();
+      return {
+        ok: false,
+        error: registerFailure(`Senha incorreta para "${targetLabel}".`)
+      };
     }
 
     const user = authenticatedUser;
@@ -739,20 +861,76 @@ export function AuthProvider({ children }) {
   };
 
   const addManagerToTenant = async ({ tenantId, name, username, password, role = 'company_manager' }) => {
-    const cleanUsername = (username || '').trim().toLowerCase();
-    if (users.some((u) => (u.username || '').trim().toLowerCase() === cleanUsername)) {
-      return { ok: false, error: 'Este login/e-mail já está em uso.' };
+    const cleanName = (name || '').trim();
+    const cleanUsername = (username || cleanName || '').trim().toLowerCase();
+    const cleanPassword = (password || '').trim();
+
+    if (!cleanUsername) {
+      return { ok: false, error: 'Informe um login/e-mail ou nome de usuário.' };
     }
+    if (cleanPassword.length < 3) {
+      return { ok: false, error: 'A senha deve ter pelo menos 3 caracteres.' };
+    }
+
+    // Garante fusão com o que estiver salvo no localStorage antes de gravar
+    let currentUsersList = [...users];
+    try {
+      const localRaw = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (localRaw) {
+        const parsed = JSON.parse(localRaw);
+        if (Array.isArray(parsed.users)) {
+          currentUsersList = mergeUniqueById(currentUsersList, parsed.users, deletedUserIds);
+        }
+      }
+    } catch {
+      // ignore
+    }
+
     const nowIso = new Date().toISOString();
     const salt = generateSalt();
-    const passwordHash = await hashPasswordWithSalt((password || '').trim(), salt);
+    const passwordHash = await hashPasswordWithSalt(cleanPassword, salt);
+    const targetTenantId = tenantId || 'tenant_default';
+    const targetRole = role === 'company_operator' ? 'company_operator' : 'company_manager';
+
+    // Se já existir um operador/gestor com o mesmo login (ou mesmo nome na empresa), atualiza a senha dele em vez de bloquear!
+    const existingIdx = currentUsersList.findIndex(
+      (u) =>
+        u.role !== 'super_admin' &&
+        ((u.username || '').trim().toLowerCase() === cleanUsername ||
+          (targetRole === 'company_operator' &&
+            u.role === 'company_operator' &&
+            u.tenantId === targetTenantId &&
+            cleanName &&
+            normalizeLoginIdentifier(u.name) === normalizeLoginIdentifier(cleanName)))
+    );
+
+    if (existingIdx !== -1) {
+      const updatedUser = {
+        ...currentUsersList[existingIdx],
+        name: cleanName || currentUsersList[existingIdx].name,
+        username: cleanUsername,
+        tenantId: targetTenantId,
+        salt,
+        passwordHash,
+        active: true,
+        updatedAt: nowIso
+      };
+      const nextUsers = currentUsersList.map((u, idx) => (idx === existingIdx ? updatedUser : u));
+      setUsers(nextUsers);
+      await saveAuthRegistryLocal(tenants, nextUsers, hasCustomizedSuperAdmin);
+      return { ok: true, user: updatedUser, updatedExisting: true };
+    }
+
+    if (currentUsersList.some((u) => (u.username || '').trim().toLowerCase() === cleanUsername)) {
+      return { ok: false, error: 'Este login/e-mail já está reservado pelo Super Admin.' };
+    }
 
     const newUser = {
       id: `usr_${Date.now()}`,
-      name: (name || '').trim(),
+      name: cleanName || cleanUsername,
       username: cleanUsername,
-      role: role === 'company_operator' ? 'company_operator' : 'company_manager',
-      tenantId: tenantId || 'tenant_default',
+      role: targetRole,
+      tenantId: targetTenantId,
       salt,
       passwordHash,
       active: true,
@@ -760,7 +938,7 @@ export function AuthProvider({ children }) {
       updatedAt: nowIso
     };
 
-    const nextUsers = [...users, newUser];
+    const nextUsers = [...currentUsersList, newUser];
     setUsers(nextUsers);
     await saveAuthRegistryLocal(tenants, nextUsers, hasCustomizedSuperAdmin);
     return { ok: true, user: newUser };
@@ -787,8 +965,8 @@ export function AuthProvider({ children }) {
     let nextSalt = target.salt;
     let nextHash = target.passwordHash;
     if (newPassword && newPassword.trim().length > 0) {
-      if (newPassword.trim().length < 6) {
-        return { ok: false, error: 'A senha deve ter pelo menos 6 caracteres.' };
+      if (newPassword.trim().length < 3) {
+        return { ok: false, error: 'A senha deve ter pelo menos 3 caracteres.' };
       }
       nextSalt = generateSalt();
       nextHash = await hashPasswordWithSalt(newPassword.trim(), nextSalt);
@@ -813,7 +991,7 @@ export function AuthProvider({ children }) {
       setCurrentUser(updatedUser);
     }
     await saveAuthRegistryLocal(tenants, nextUsers, nextCustomized);
-    return { ok: true };
+    return { ok: true, user: updatedUser };
   };
 
   const deleteUser = (userId) => {
@@ -832,7 +1010,7 @@ export function AuthProvider({ children }) {
   // Empresa ativa no contexto atual (para Gestor ou Operador é a empresa dele; para o Super Admin é a empresa inspecionada ou a padrão)
   const activeTenantId =
     currentUser?.role === 'company_manager' || currentUser?.role === 'company_operator'
-      ? currentUser.tenantId
+      ? currentUser.tenantId || 'tenant_default'
       : impersonatedTenantId || tenants[0]?.id || 'tenant_default';
 
   const activeTenant = tenants.find((t) => t.id === activeTenantId) || tenants[0] || DEFAULT_TENANT;
